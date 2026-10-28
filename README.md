@@ -13,7 +13,7 @@ The English edition is maintained on `main`. The original French edition is pres
 [GitHub releases](https://github.com/koorg/rdappy/releases) include a universal wheel. After downloading it:
 
 ```console
-python -m pip install --user --no-deps rdappy-1.0.1-py3-none-any.whl
+python -m pip install --user --no-deps rdappy-1.1.0-py3-none-any.whl
 rdappy --version
 rdappy example.com
 ```
@@ -23,7 +23,7 @@ Omit `--user` when using an activated virtual environment. The installer creates
 For an isolated installation with an existing `pipx` installation:
 
 ```console
-pipx install ./rdappy-1.0.1-py3-none-any.whl
+pipx install ./rdappy-1.1.0-py3-none-any.whl
 ```
 
 From a local copy of the repository:
@@ -44,6 +44,8 @@ python rdappy.py example.com
 
 ```console
 rdappy example.com
+rdappy --owner example.com
+rdappy --owner 1.1.1.1
 rdappy --registry --short example.com
 rdappy --both --raw rdap.org
 rdappy 1.1.1.1
@@ -65,6 +67,7 @@ Server discovery uses the IANA bootstrap registries. By default, rdappy follows 
 
 | Option | Behavior |
 | --- | --- |
+| `--owner` | Show a compact registrant summary focused on organizations. For domains, combine registry and registrar data by default. |
 | `--registry` | Display only the registry record. |
 | `--registrar` | Follow the registrar referral; this is the default. |
 | `--both` | Display both registry and registrar records. |
@@ -91,6 +94,23 @@ Search availability depends on each server's capabilities and access rules. A se
 Internationalized names use Python's built-in IDNA codec (IDNA 2003). For some IDNA 2008 names, provide the ASCII form accepted by the service directly.
 
 A `404` result means that the object was not found in the queried service. It does not prove that a domain is available for registration. Private addresses, documentation prefixes, and some reserved resources may not have RDAP records.
+
+## Focused registrant summaries
+
+```console
+rdappy --owner example.com
+rdappy --owner 1.1.1.1
+rdappy --owner --raw example.com
+rdappy --owner --registry example.com
+```
+
+`--owner` displays only the queried domain or network, registrant organizations, contact names, contact countries, and email addresses. Organizations appear first. Missing fields are omitted, while an unavailable organization is explicitly shown as `Not disclosed or not provided`.
+
+Only entities explicitly assigned the `registrant` role on the queried object are used. Registrar, technical, administrative, and abuse contacts are excluded. A network label is never used as an organization name. An entity's formatted name is used as its organization only when its jCard explicitly identifies it as an organization.
+
+For domains, registry and registrar data are combined and duplicate values are removed. Use `--registry` or `--registrar` to select one source explicitly. `--owner --raw` produces focused JSON with `object_type`, `object`, `organizations`, `registrants`, `emails`, `countries`, and `sources` fields; `--raw` without `--owner` continues to return the complete RDAP response.
+
+This mode also supports ASNs and local JSON files. It cannot be combined with `--search`. Contact countries are taken from registrant addresses and are not IP geolocation. A network registrant may be an operator or hosting provider, and a domain registrant may be a privacy service; this summary does not identify an undisclosed end user or beneficial owner.
 
 ## Configuration
 
@@ -134,8 +154,8 @@ python tools/build.py
 The following files are created in `dist/`:
 
 ```text
-rdappy-1.0.1-py3-none-any.whl
-rdappy-1.0.1.tar.gz
+rdappy-1.1.0-py3-none-any.whl
+rdappy-1.1.0.tar.gz
 rdappy.py
 SHA256SUMS
 ```

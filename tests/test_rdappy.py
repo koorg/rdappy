@@ -19,7 +19,7 @@ from urllib.request import ProxyHandler, Request
 from rdappy import (
     Client, Formatter, RdapError, Response, as_number, configuration_args,
     decode_document, detect_type, domain_name, http_url, ip_network,
-    local_document, main, origin, parser, reverse_name, reverse_network,
+    local_document, main, origin, owner_summary, parser, reverse_name, reverse_network,
 )
 import rdappy
 
@@ -338,6 +338,114 @@ class Tests(unittest.TestCase):
     def test_empty_search_is_success(self):
         with patch.object(Client, "search", return_value=[Response({"domainSearchResults": []}, base)]):
             self.assertEqual(self.run_cli("--search", "absent.test"), (0, "", ""))
+
+    def test_owner_summary_uses_only_direct_registrants(self):
+        owner = {"roles": ["registrant"], "vcardArray": ["vcard", [
+            ["org", {}, "text", "Example Company"], ["fn", {}, "text", "Alice"],
+            ["email", {}, "text", "owner@example.test"],
+            ["adr", {"cc": "FR"}, "text", ["", "", "", "", "", "", "France"]],
+        ]]}
+        unrelated = {"roles": ["registrar"], "vcardArray": ["vcard", [["org", {}, "text", "Wrong Registrar"]]],
+                     "entities": [{"roles": ["registrant"], "vcardArray": ["vcard", [["org", {}, "text", "Nested Registrar Owner"]]]}]}
+        data = dict(domain, entities=[owner, unrelated, {"roles": ["abuse"], "vcardArray": ["vcard", [["org", {}, "text", "Abuse Organization"]]]}])
+        summary = owner_summary([Response(data, base)])
+        self.assertEqual(summary["organizations"], ["Example Company"])
+        self.assertEqual(summary["registrants"], ["Alice"])
+        self.assertEqual(summary["emails"], ["owner@example.test"])
+        self.assertEqual(summary["countries"], ["FR"])
+        output = Formatter().render_owner(summary)
+        self.assertIn("Organization: Example Company", output)
+        self.assertNotIn("Wrong Registrar", output)
+        self.assertNotIn("Nested Registrar Owner", output)
+        self.assertNotIn("Abuse Organization", output)
+        self.assertNotIn("Notice text", output)
+
+    def test_owner_summary_rir_org_kind_and_individual_names(self):
+        data = {"objectClassName": "ip network", "name": "NETWORK-LABEL", "country": "US",
+                "startAddress": "192.0.2.0", "endAddress": "192.0.2.255",
+                "entities": [{"roles": ["registrant"], "vcardArray": ["vcard", [
+                    ["kind", {}, "text", "org"], ["fn", {}, "text", "Example Operator"],
+                ]]}]}
+        summary = owner_summary([Response(data, base)])
+        self.assertEqual(summary["organizations"], ["Example Operator"])
+        self.assertEqual(summary["registrants"], [])
+        self.assertEqual(summary["countries"], [])
+        self.assertIn("Network: 192.0.2.0 - 192.0.2.255", Formatter().render_owner(summary))
+        individual = {"roles": ["registrant"], "vcardArray": ["vcard", [["kind", {}, "text", "individual"], ["fn", {}, "text", "Alice"]]]}
+        summary = owner_summary([Response(dict(data, entities=[individual]), base)])
+        self.assertEqual(summary["organizations"], [])
+        self.assertEqual(summary["registrants"], ["Alice"])
+
+    def test_owner_summary_merges_sources_and_deduplicates(self):
+        first = {"roles": ["registrant"], "vcardArray": ["vcard", [
+            ["org", {}, "text", "Example Company"], ["fn", {}, "text", "Alice"],
+            ["email", {}, "text", "owner@example.test"],
+        ]]}
+        second = {"roles": ["registrant"], "vcardArray": ["vcard", [
+            ["org", {}, "text", "EXAMPLE COMPANY"], ["fn", {}, "text", "Alice"],
+            ["email", {}, "text", "owner@example.test"], ["email", {}, "text", "public@example.test"],
+        ]]}
+        records = [Response(dict(domain, entities=[first]), base + "registry"),
+                   Response(dict(domain, ldhName="EXAMPLE.TEST.", entities=[second]), base + "registrar")]
+        summary = owner_summary(records)
+        self.assertEqual(summary["organizations"], ["Example Company"])
+        self.assertEqual(summary["registrants"], ["Alice"])
+        self.assertEqual(summary["emails"], ["owner@example.test", "public@example.test"])
+        self.assertEqual(summary["sources"], [base + "registry", base + "registrar"])
+
+    def test_owner_summary_never_substitutes_registrar_for_missing_owner(self):
+        registrar = {"roles": ["registrar"], "vcardArray": ["vcard", [["org", {}, "text", "Registrar Company"]]]}
+        malformed = {"roles": ["registrant"], "vcardArray": ["vcard", None]}
+        summary = owner_summary([Response(dict(domain, entities=[registrar, malformed]), base)])
+        self.assertEqual(summary["organizations"], [])
+        self.assertEqual(summary["registrants"], [])
+        output = Formatter().render_owner(summary)
+        self.assertIn("Organization: Not disclosed or not provided", output)
+        self.assertNotIn("Registrar Company", output)
+
+    def test_owner_cli_fetches_both_sources_unless_explicitly_selected(self):
+        code, out, err = self.run_cli("--server", base + "registry/", "--owner", "--raw", "example.test")
+        self.assertEqual(code, 0, err)
+        summary = json.loads(out)
+        self.assertEqual(summary["object_type"], "domain")
+        self.assertEqual(summary["registrants"], ["Alice"])
+        self.assertEqual(len(summary["sources"]), 2)
+        self.assertEqual(len(requests), 2)
+        for mode in ("--registry", "--registrar"):
+            requests.clear()
+            code, out, err = self.run_cli("--server", base + "registry/", "--owner", mode, "--raw", "example.test")
+            self.assertEqual(code, 0, err)
+            self.assertEqual(len(json.loads(out)["sources"]), 1)
+            self.assertEqual(len(requests), 1 if mode == "--registry" else 2)
+
+    def test_owner_cli_local_json_is_focused_and_offline(self):
+        with tempfile.TemporaryDirectory(prefix=".rdappy-test-", dir=Path(__file__).resolve().parent) as directory:
+            path = Path(directory) / "record.json"
+            path.write_text(json.dumps(domain), encoding="utf-8")
+            code, out, err = self.run_cli("--owner", "--file", str(path), "--raw")
+            self.assertEqual(code, 0, err)
+            self.assertEqual(json.loads(out)["registrants"], ["Alice"])
+            self.assertNotIn("entities", json.loads(out))
+            code, out, err = self.run_cli("--owner", "--file", str(path))
+            self.assertEqual(code, 0, err)
+            self.assertIn("Registrant: Alice", out)
+            self.assertNotIn("Notice text", out)
+            self.assertEqual(requests, [])
+
+    def test_owner_summary_rejects_mismatched_or_unsupported_records(self):
+        records = [Response(domain, base), Response(dict(domain, ldhName="different.test"), base + "different")]
+        with self.assertRaisesRegex(RdapError, "different domain names"):
+            owner_summary(records)
+        for records in ([], [Response({"objectClassName": "nameserver"}, base)],
+                        [Response(domain, base), Response({"objectClassName": "autnum"}, base)]):
+            with self.subTest(records=records), self.assertRaises(RdapError):
+                owner_summary(records)
+
+    def test_owner_cli_rejects_search(self):
+        with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit) as error:
+            main(["--no-config", "--owner", "--search", "exampl*.test"])
+        self.assertEqual(error.exception.code, 2)
+        self.assertEqual(requests, [])
 
     def test_search_deduplicates_services_and_results(self):
         with patch.object(self.client, "services", return_value=[(["a"], [base + "registry/"]), (["b"], [base + "registry/"])]):

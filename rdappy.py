@@ -34,7 +34,7 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import quote, unquote, urlencode, urljoin, urlsplit, urlunsplit
 from urllib.request import HTTPRedirectHandler, HTTPSHandler, Request, build_opener
 
-VERSION = "1.0.1"
+VERSION = "1.1.0"
 IANA = "https://data.iana.org/rdap/"
 MAX_BYTES = 16 * 1024 * 1024
 SEARCH_KEYS = ("domainSearchResults", "nameserverSearchResults", "entitySearchResults", "domainSearchResult", "nameserverSearchResult", "entitySearchResult")
@@ -514,6 +514,75 @@ class Client:
         return responses
 
 
+def owner_summary(responses):
+    """Collect public registrant data without substituting other contact roles."""
+    if not responses:
+        raise RdapError("No RDAP records are available for an owner summary.")
+    first = responses[0].data
+    kind = first.get("objectClassName")
+    if kind not in ("domain", "ip network", "autnum"):
+        raise RdapError("Owner summaries require a domain, IP network or autonomous system record.")
+    name = text(first.get("ldhName") or first.get("unicodeName"))
+    identifier = text(first.get("unicodeName") or first.get("ldhName") or first.get("handle") or first.get("name"))
+    if kind == "ip network" and first.get("startAddress") and first.get("endAddress"):
+        identifier = f"{first['startAddress']} - {first['endAddress']}"
+    elif kind == "autnum" and "startAutnum" in first:
+        start, end = first["startAutnum"], first.get("endAutnum", first["startAutnum"])
+        identifier = f"AS{start}" if start == end else f"AS{start} - AS{end}"
+    summary = {"object_type": kind, "object": identifier, "organizations": [],
+               "registrants": [], "emails": [], "countries": [], "sources": []}
+    seen = {field: set() for field, value in summary.items() if isinstance(value, list)}
+
+    def add(field, value):
+        value = text(value).strip()
+        if value and value.casefold() not in seen[field]:
+            seen[field].add(value.casefold())
+            summary[field].append(value)
+
+    for response in responses:
+        data = response.data
+        if data.get("objectClassName") != kind:
+            raise RdapError("Cannot combine different RDAP object types in an owner summary.")
+        candidate = text(data.get("ldhName") or data.get("unicodeName"))
+        if kind == "domain" and name and candidate and name.rstrip(".").casefold() != candidate.rstrip(".").casefold():
+            raise RdapError("Registry and registrar records refer to different domain names.")
+        add("sources", response.url)
+        # Entity roles apply to the immediate parent. A registrar's nested
+        # registrant is not necessarily the domain's registrant.
+        for entity in objects(data.get("entities")):
+            roles = [text(role).casefold() for role in items(entity.get("roles"))]
+            if "registrant" not in roles:
+                continue
+            card = entity.get("vcardArray")
+            if not isinstance(card, list) or len(card) != 2:
+                continue
+            properties = [prop for prop in items(card[1]) if isinstance(prop, list) and len(prop) >= 4 and isinstance(prop[0], str)]
+            organizations, names, entity_kinds = [], [], []
+            for key, params, _, value, *_rest in properties:
+                key = key.casefold()
+                if key == "org" and text(value).strip():
+                    organizations.append(text(value).strip())
+                elif key == "fn" and text(value).strip():
+                    names.append(text(value).strip())
+                elif key == "kind":
+                    entity_kinds.append(text(value).casefold())
+                elif key == "email":
+                    add("emails", value)
+                elif key == "adr":
+                    params = params if isinstance(params, dict) else {}
+                    address = items(value)
+                    country = params.get("cc") or (address[6] if len(address) > 6 else "")
+                    add("countries", country)
+            if not organizations and "org" in entity_kinds:
+                organizations = names
+            for organization in organizations:
+                add("organizations", organization)
+            for contact_name in names:
+                if contact_name.casefold() not in [organization.casefold() for organization in organizations]:
+                    add("registrants", contact_name)
+    return summary
+
+
 class Formatter:
     def __init__(self, *, short=False, color=False, width=None):
         self.short, self.color = short, color
@@ -689,6 +758,16 @@ class Formatter:
         self.display(response.data, url=response.url)
         return "\n".join(self.lines)
 
+    def render_owner(self, summary):
+        self.lines = []
+        label = {"domain": "Domain", "ip network": "Network", "autnum": "Autonomous System"}[summary["object_type"]]
+        self.kv(label, summary["object"])
+        self.kv("Organization", summary["organizations"] or "Not disclosed or not provided")
+        for field, label in (("registrants", "Registrant"), ("countries", "Country"), ("emails", "Email")):
+            if summary[field]:
+                self.kv(label, summary[field])
+        return "\n".join(self.lines)
+
 
 def positive_timeout(value):
     try:
@@ -711,7 +790,8 @@ def parser():
     mode.add_argument("--registry", dest="mode", action="store_const", const="registry", help="display only the registry record")
     mode.add_argument("--registrar", dest="mode", action="store_const", const="registrar", help="follow the registrar referral (default)")
     mode.add_argument("--both", dest="mode", action="store_const", const="both", help="display registry and registrar records")
-    p.set_defaults(mode="registrar")
+    p.set_defaults(mode=None)
+    p.add_argument("--owner", action="store_true", help="summarize registrant organization and contact data (domains: consult both sources by default)")
     p.add_argument("--raw", "--json", action="store_true", help="display the complete JSON response")
     p.add_argument("--short", action="store_true", help="omit links, remarks, notices and redacted fields")
     p.add_argument("--search", action="store_true", help="search domains (without a suffix: all IANA DNS services)")
@@ -785,6 +865,8 @@ def main(argv=None):
         kind = args.kind or (detect_type(value) if value else None)
         if args.search and args.kind not in (None, "domain"):
             p.error("--search is available for domains only.")
+        if args.owner and args.search:
+            p.error("--owner cannot be combined with --search.")
         if args.reverse and (kind != "ip" or args.search):
             p.error("--reverse requires an IP address or CIDR prefix.")
         if args.insecure:
@@ -795,8 +877,16 @@ def main(argv=None):
         elif args.search:
             responses = client.search(value, server=args.server)
         else:
-            responses = client.records(client.lookup(value, kind, server=args.server, reverse=args.reverse), args.mode)
-        if args.raw:
+            mode = args.mode or ("both" if args.owner else "registrar")
+            responses = client.records(client.lookup(value, kind, server=args.server, reverse=args.reverse), mode)
+        if args.owner:
+            summary = owner_summary(responses)
+            if args.raw:
+                print(json.dumps(summary, ensure_ascii=False, indent=2, sort_keys=True, allow_nan=False))
+            else:
+                formatter = Formatter(color=sys.stdout.isatty() and not args.nocolor and "NO_COLOR" not in os.environ)
+                print(formatter.render_owner(summary))
+        elif args.raw:
             payload = responses[0].data if len(responses) == 1 else [response.data for response in responses]
             print(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True, allow_nan=False))
         elif args.search or any(any(key in response.data for key in SEARCH_KEYS) for response in responses):

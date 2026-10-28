@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.1.0 — 2026-10-28
+
+- Add `--owner` for a compact summary focused on registrant organizations, names, contact countries, and email addresses.
+- Combine registry and registrar information by default in domain owner mode, while respecting explicit source-selection options.
+- Support focused JSON output with `--owner --raw` and offline summaries with `--owner --file`.
+- Keep registrar, technical, administrative, abuse, and unrelated nested contacts out of owner summaries.
+
 ## 1.0.1 — 2026-10-28
 
 - Make English the primary edition on `main`, including command-line help, diagnostics, labels, documentation, and source comments.
