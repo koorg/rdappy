@@ -1,0 +1,8 @@
+include README.md LICENSE NOTICE CHANGELOG.md pyproject.toml
+recursive-include tests *.py
+include tools/build.py
+global-exclude *.py[cod]
+prune .git
+prune .venv
+prune .github
+prune dist

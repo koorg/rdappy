@@ -1,0 +1,25 @@
+rdappy 1.0.0
+Copyright (c) 2026 koorg.
+
+rdappy is a Python implementation of the functionality of App::rdapper 1.26.
+It is a separate implementation and is not an official release of rdapper.
+
+App::rdapper:
+  Copyright (c) 2012-2023 CentralNic Ltd.
+  Copyright (c) 2023-2026 Gavin Brown.
+  https://github.com/gbxyz/rdapper
+  Reference revision: b168358d9513d0b170c8e2c190c845e8ee5ef1fa
+
+Net::RDAP (bootstrap discovery, RDAP objects and EPP status correspondence):
+  Copyright (c) 2018-2023 CentralNic Ltd.
+  Copyright (c) 2024-2026 Gavin Brown.
+  https://github.com/gbxyz/perl-net-rdap
+
+The Python implementation, packaging and documentation were prepared on
+2026-10-28. Differences include the standard-library HTTP/JSON/IP implementation,
+a single application module, a console entry point, optional disk caching,
+offline JSON input, and valid JSON arrays for combined registry/registrar output.
+
+Distributed under the Perl Artistic License 1.0 (Artistic-1.0-Perl).
+The complete license is provided in LICENSE and embedded in rdappy.py.
+The names of the original copyright holders do not imply endorsement.
