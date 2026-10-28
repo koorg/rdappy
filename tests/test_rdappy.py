@@ -23,7 +23,7 @@ from rdappy import (
 )
 import rdappy
 
-domain = {"objectClassName": "domain", "ldhName": "example.test", "handle": "REGISTRY", "entities": [{"objectClassName": "entity", "handle": "E-TEST", "roles": ["registrant"], "vcardArray": ["vcard", [["fn", {}, "text", "Alice"], ["email", {}, "text", "alice@example.test"], ["adr", {}, "text", ["", "", "1 rue Test", "Paris", "", "75000", "FR"]]]]}], "secureDNS": {"delegationSigned": True, "dsData": [{"keyTag": 1, "algorithm": 13, "digestType": 2, "digest": "ABCD"}]}, "notices": [{"title": "Terms", "description": ["Notice text"]}]}
+domain = {"objectClassName": "domain", "ldhName": "example.test", "handle": "REGISTRY", "entities": [{"objectClassName": "entity", "handle": "E-TEST", "roles": ["registrant"], "vcardArray": ["vcard", [["fn", {}, "text", "Alice"], ["email", {}, "text", "alice@example.test"], ["adr", {}, "text", ["", "", "1 Test Street", "Paris", "", "75000", "FR"]]]]}], "secureDNS": {"delegationSigned": True, "dsData": [{"keyTag": 1, "algorithm": 13, "digestType": 2, "digest": "ABCD"}]}, "notices": [{"title": "Terms", "description": ["Notice text"]}]}
 
 requests = []
 base = ""
@@ -156,7 +156,7 @@ class Tests(unittest.TestCase):
         broken = Response(dict(domain, links=[{"rel": "related", "type": "application/rdap+json", "href": base + "missing"}]), response.url)
         with contextlib.redirect_stderr(io.StringIO()) as err:
             self.assertEqual(self.client.records(broken), [broken])
-        self.assertIn("conserve", err.getvalue())
+        self.assertIn("displaying the registry record", err.getvalue())
 
     def test_http_errors_and_invalid_json(self):
         for path, status in (("missing", 404), ("limited", 429), ("bad-json", None), ("list-json", None)):
@@ -165,16 +165,16 @@ class Tests(unittest.TestCase):
             self.assertEqual(error.exception.status, status)
         with self.assertRaises(RdapError):
             decode_document(b'{"errorCode":403,"title":"Forbidden"}', base)
-        with patch.object(self.client.opener, "open", side_effect=HTTPException("connexion interrompue")):
+        with patch.object(self.client.opener, "open", side_effect=HTTPException("connection interrupted")):
             with self.assertRaises(RdapError):
                 self.client.fetch(base + "truncated")
 
     def test_failover_and_rate_limits(self):
         response = Response(domain, base)
-        with patch.object(self.client, "fetch", side_effect=[RdapError("connexion impossible"), response]) as fetch:
+        with patch.object(self.client, "fetch", side_effect=[RdapError("connection failed"), response]) as fetch:
             self.assertEqual(self.client.candidates([base + "first", base + "second"]), response)
             self.assertEqual(fetch.call_count, 2)
-        with patch.object(self.client, "fetch", side_effect=RdapError("quota atteint", 429)) as fetch:
+        with patch.object(self.client, "fetch", side_effect=RdapError("rate limit reached", 429)) as fetch:
             with self.assertRaises(RdapError):
                 self.client.candidates([base + "first", base + "second"])
             self.assertEqual(fetch.call_count, 1)
@@ -232,16 +232,16 @@ class Tests(unittest.TestCase):
 
     def test_formatting(self):
         response = Response(domain, base)
-        output = Formatter(language="en", width=120).render(response)
+        output = Formatter(width=120).render(response)
         for value in ("Alice", "alice@example.test", "Paris", "DS Record: 1 13 2 ABCD", "Notice text"):
             self.assertIn(value, output)
         short = Formatter(short=True).render(response)
         self.assertNotIn("Notice text", short)
         self.assertIn("Alice", short)
-        self.assertIn("Nom de domaine", Formatter(language="fr").render(response))
+        self.assertIn("Object type: Domain Name", Formatter().render(response))
         self.assertNotIn("\x1b", Formatter().render(Response(dict(domain, ldhName="x\x1b[2J"), base)))
         enriched = dict(domain, status=["active", "associated", "validated"], ttl0_data={"values": {"NS": 3600}, "remarks": [{"description": ["TTL notice"]}]})
-        output = Formatter(language="en").render(Response(enriched, base))
+        output = Formatter().render(Response(enriched, base))
         self.assertIn("https://icann.org/epp#ok", output)
         self.assertIn("https://icann.org/epp#linked", output)
         self.assertNotIn("https://icann.org/epp#validated", output)
@@ -261,7 +261,7 @@ class Tests(unittest.TestCase):
             self.assertEqual(local_document(path.as_uri()).data, domain)
             self.assertEqual(requests, [])
             config = Path(directory) / "config"
-            config.write_text("# commentaire\n--short\n--language=fr\n", encoding="utf-8")
+            config.write_text("# comment\n--short\n--language=fr\n", encoding="utf-8")
             args = parser().parse_args(configuration_args(["--config", str(config), "example.test"]))
             self.assertTrue(args.short)
             self.assertEqual(args.language, "fr")
@@ -363,6 +363,22 @@ class Tests(unittest.TestCase):
         self.assertNotIn("--self-test", help_text)
         self.assertNotIn("--source", help_text)
         self.assertEqual(parser().prog, "rdappy")
+
+    def test_english_interface_is_independent_of_locale_and_response_language(self):
+        with patch.dict(os.environ, {"LC_ALL": "fr_FR.UTF-8", "LC_MESSAGES": "fr_FR.UTF-8", "LANG": "fr_FR.UTF-8"}):
+            self.assertEqual(parser().parse_args(["example.test"]).language, "en")
+            self.assertIn("A single-file Python RDAP client", parser().format_help())
+            code, out, err = self.run_cli("--registry", "--server", base + "registry/", "example.test")
+            self.assertEqual(code, 0, err)
+            self.assertIn("Object type: Domain Name", out)
+            self.assertEqual(requests[-1][2], "en")
+            code, out, err = self.run_cli("--registry", "--language", "fr", "--server", base + "registry/", "example.test")
+            self.assertEqual(code, 0, err)
+            self.assertIn("Object type: Domain Name", out)
+            self.assertEqual(requests[-1][2], "fr")
+            code, out, err = self.run_cli("--ip", "999.1.1.1")
+            self.assertEqual((code, out), (1, ""))
+            self.assertTrue(err.startswith("Error: Invalid IP address or prefix:"), err)
 
     def test_command_exits_cleanly_when_output_pipe_closes(self):
         with tempfile.TemporaryDirectory(prefix=".rdappy-test-", dir=Path(__file__).resolve().parent) as directory:

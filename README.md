@@ -1,44 +1,46 @@
 # rdappy
 
-Client RDAP en ligne de commande, écrit en Python. Le programme tient dans un seul fichier et utilise uniquement la bibliothèque standard : aucune dépendance à l’exécution, aucune compilation native.
+A command-line RDAP client written in Python. The application fits in a single file and uses only the standard library: no runtime dependencies and no native compilation.
 
-Il interroge les services de données d’enregistrement pour les domaines, les adresses et réseaux IP, les systèmes autonomes, les contacts et les serveurs DNS.
+Query registration data for domain names, IP addresses and networks, autonomous systems, contacts, and nameservers.
 
-**Python 3.10 ou ultérieur · Windows, Linux et macOS · Licence Artistic 1.0 de Perl**
+**Python 3.10 or later · Windows, Linux, and macOS · Perl Artistic License 1.0**
+
+The English edition is maintained on `main`. The original French edition is preserved on the [`fr` branch](https://github.com/koorg/rdappy/tree/fr).
 
 ## Installation
 
-Les [versions GitHub](https://github.com/koorg/rdappy/releases) proposent un paquet wheel universel. Après téléchargement :
+[GitHub releases](https://github.com/koorg/rdappy/releases) include a universal wheel. After downloading it:
 
 ```console
-python -m pip install --user --no-deps rdappy-1.0.0-py3-none-any.whl
+python -m pip install --user --no-deps rdappy-1.0.1-py3-none-any.whl
 rdappy --version
 rdappy example.com
 ```
 
-Dans un environnement virtuel activé, omettre `--user`. L’installateur crée automatiquement la commande `rdappy` (`rdappy.exe` sous Windows). Son dossier de scripts doit être présent dans `PATH`. Si la commande n’est pas trouvée, redémarrer le terminal après avoir ajouté ce dossier à `PATH`, ou utiliser `python -m rdappy`.
+Omit `--user` when using an activated virtual environment. The installer creates the `rdappy` command automatically (`rdappy.exe` on Windows). Its scripts directory must be on `PATH`. If the command is not found, add that directory to `PATH` and open a new terminal, or use `python -m rdappy`.
 
-Pour une installation isolée avec un outil `pipx` déjà disponible :
+For an isolated installation with an existing `pipx` installation:
 
 ```console
-pipx install ./rdappy-1.0.0-py3-none-any.whl
+pipx install ./rdappy-1.0.1-py3-none-any.whl
 ```
 
-Depuis une copie du dépôt :
+From a local copy of the repository:
 
 ```console
 python -m pip install --user --no-deps .
 ```
 
-Cette dernière commande utilise `setuptools` pour construire le paquet ; le programme installé reste sans dépendance. L’installation depuis le wheel n’a pas besoin de `setuptools`, d’un compilateur ni d’un accès à un index de paquets.
+Installing from source uses `setuptools` to build the package; the installed application still has no dependencies. Installing the wheel does not require `setuptools`, a compiler, or access to a package index.
 
-Le dépôt est également utilisable sans installation :
+The application also runs without installation:
 
 ```console
 python rdappy.py example.com
 ```
 
-## Utilisation
+## Usage
 
 ```console
 rdappy example.com
@@ -48,7 +50,7 @@ rdappy 1.1.1.1
 rdappy 2606:4700:4700::1111
 rdappy 192.0.2.0/24
 rdappy AS13335
-rdappy --tld fr
+rdappy --tld com
 rdappy --entity ADMIN2521-ARIN
 rdappy --nameserver a.root-servers.net
 rdappy --reverse 1.1.1.1
@@ -59,91 +61,93 @@ rdappy --file response.json --raw
 rdappy --help
 ```
 
-La découverte des serveurs utilise les registres de bootstrap IANA. Par défaut, rdappy suit un renvoi vers le registrar lorsqu’il existe ; si ce renvoi échoue, il affiche le résultat du registre et signale l’échec sur la sortie d’erreur.
+Server discovery uses the IANA bootstrap registries. By default, rdappy follows a registrar referral when one is available. If that request fails, it displays the registry record and writes a warning to standard error.
 
-| Option | Effet |
+| Option | Behavior |
 | --- | --- |
-| `--registry` | Afficher uniquement l’objet du registre. |
-| `--registrar` | Suivre le renvoi registrar ; comportement par défaut. |
-| `--both` | Afficher les objets du registre et du registrar. |
-| `--raw`, `--json` | Afficher les données JSON complètes. Deux objets ou plusieurs réponses de recherche sont réunis dans un tableau JSON valide. |
-| `--short` | Omettre liens, remarques, avis et champs masqués. |
-| `--type TYPE` | Choisir `domain`, `tld`, `ip`, `autnum`, `entity`, `nameserver` ou `url`. Les options `--domain`, `--ip`, etc. sont des alias. |
-| `--server URL` | Choisir explicitement l’URL de base d’un service RDAP. |
-| `--search` | Rechercher des domaines. Sans suffixe, interroger chaque service DNS IANA distinct. |
-| `--reverse` | Interroger la zone DNS inverse du bloc attribué à l’IP. Pour un bloc non aligné sur une limite de zone inverse, utiliser sa zone parente couvrante. |
-| `--timeout SECONDES` | Délai réseau, 20 secondes par défaut. |
-| `--cache-dir DOSSIER` | Activer le cache disque ; les requêtes ordinaires sont conservées au plus 300 secondes, les bootstraps IANA au plus 24 heures. |
-| `--bypass-cache` | Ignorer les caches et ne pas y écrire. |
-| `--file JSON` | Lire une réponse locale sans requête RDAP. Les renvois ne sont pas suivis. |
-| `--auth USER:PASS` | Authentification HTTP Basic, avec `--server` ou une URL RDAP explicite. Les identifiants ne sont jamais transmis à une autre origine ni enregistrés dans le cache. |
-| `--language fr` | Choisir l’en-tête `Accept-Language` et les libellés français ; les libellés anglais sont disponibles avec `en`. |
-| `--nocolor` | Désactiver les couleurs. La variable `NO_COLOR` est aussi respectée. |
-| `--config FICHIER`, `--no-config` | Choisir ou ignorer le fichier de configuration. |
-| `--debug` | Afficher les URL interrogées sur la sortie d’erreur. |
-| `--insecure` | Désactiver la vérification des certificats TLS ; réservé aux services dont la connexion est explicitement maîtrisée. |
-| `--version`, `--license` | Afficher la version ou la licence. |
+| `--registry` | Display only the registry record. |
+| `--registrar` | Follow the registrar referral; this is the default. |
+| `--both` | Display both registry and registrar records. |
+| `--raw`, `--json` | Display complete JSON. Two records or multiple search responses are combined into a valid JSON array. |
+| `--short` | Omit links, remarks, notices, and redacted fields. |
+| `--type TYPE` | Select `domain`, `tld`, `ip`, `autnum`, `entity`, `nameserver`, or `url`. Options such as `--domain` and `--ip` are aliases. |
+| `--server URL` | Explicitly select an RDAP service's base URL. |
+| `--search` | Search domain names. Without a suffix, query each distinct IANA DNS service. |
+| `--reverse` | Query the reverse DNS zone of the IP's allocated block. For an unaligned block, use the parent reverse zone covering it. |
+| `--timeout SECONDS` | Network timeout per request, 20 seconds by default. |
+| `--cache-dir DIRECTORY` | Enable disk caching. Ordinary responses are cached for at most 300 seconds, and IANA bootstraps for at most 24 hours. |
+| `--bypass-cache` | Bypass caches and do not write to them. |
+| `--file JSON` | Read a local response without making RDAP requests or following referrals. |
+| `--auth USER:PASS` | Use HTTP Basic authentication with `--server` or an explicit RDAP URL. Credentials are never forwarded to another origin or stored in the cache. |
+| `--language LANGUAGE` | Set the `Accept-Language` request header, which defaults to `en`. The application's help, labels, and diagnostics are always English; server-provided data is displayed as received. |
+| `--nocolor` | Disable ANSI colors. The `NO_COLOR` environment variable is also respected. |
+| `--config FILE`, `--no-config` | Select or ignore the configuration file. |
+| `--debug` | Print queried URLs to standard error. |
+| `--insecure` | Disable TLS certificate verification for a service whose connection you explicitly control. |
+| `--version`, `--license` | Display the version or license. |
 
-Les recherches dépendent des capacités et des règles d’accès du serveur. Un serveur peut refuser les jokers ou exiger une authentification. rdappy accepte également le champ `domainSearchResult` utilisé par le serveur `.fr`. Une recherche globale peut prendre du temps ; préciser un suffixe ou `--server` limite les requêtes.
+Search availability depends on each server's capabilities and access rules. A server may reject wildcards or require authentication. rdappy also accepts the nonstandard `domainSearchResult` field returned by the `.fr` service. Global searches can take time; specify a suffix or `--server` to limit the requests.
 
-Les noms internationalisés utilisent le codec IDNA natif de Python (IDNA 2003). Certains noms IDNA 2008 exigent de fournir directement la forme ASCII acceptée par le service concerné.
+Internationalized names use Python's built-in IDNA codec (IDNA 2003). For some IDNA 2008 names, provide the ASCII form accepted by the service directly.
 
-Un résultat `404` signifie que l’objet est introuvable dans le service interrogé. Il ne prouve pas qu’un domaine est disponible à l’enregistrement. Les adresses privées, les préfixes de documentation et certaines ressources réservées peuvent ne pas avoir d’objet RDAP.
+A `404` result means that the object was not found in the queried service. It does not prove that a domain is available for registration. Private addresses, documentation prefixes, and some reserved resources may not have RDAP records.
 
 ## Configuration
 
-rdappy lit `~/.rdappy`, ou `~/.rdapper` si le premier n’existe pas. Le format est un argument par ligne ; les lignes vides et les commentaires commençant par `#` sont ignorés.
+rdappy reads `~/.rdappy`, falling back to `~/.rdapper` when the first file does not exist. Use one argument per line. Empty lines and comments starting with `#` are ignored.
 
 ```text
 --short
---language=fr
+--language=en
 --timeout=15
 ```
 
-Pour conserver la compatibilité avec rdapper, ces arguments sont ajoutés après ceux de la ligne de commande. Une valeur du fichier peut donc remplacer une valeur saisie dans le terminal. Utiliser `--no-config` pour un appel dont les paramètres doivent être entièrement explicites.
+For compatibility with rdapper, these arguments are appended after command-line arguments. A value in the file can therefore override a value entered in the terminal. Use `--no-config` when a command's parameters must be entirely explicit.
 
-Sans `--cache-dir`, aucun cache persistant n’est créé. Les réponses authentifiées et celles portant `Cache-Control: no-store`, `no-cache` ou `private` ne sont pas mises en cache. Le cache optionnel contient les données RDAP reçues ; choisir un dossier dont les droits d’accès conviennent à ces données.
+The interface remains English regardless of system locale or the requested response language. To use the French edition, switch to the [`fr` branch](https://github.com/koorg/rdappy/tree/fr).
 
-## Scripts et codes de retour
+No persistent cache is created unless `--cache-dir` is supplied. Authenticated responses and responses with `Cache-Control: no-store`, `no-cache`, or `private` are not cached. The optional cache contains received RDAP data; choose a directory whose access permissions are appropriate for that data.
 
-Les résultats sont écrits sur `stdout`. Les avertissements, diagnostics et erreurs sont écrits sur `stderr`. Les sorties de la commande installée et de `python -m rdappy` utilisent UTF-8, y compris lorsqu’elles sont redirigées.
+## Scripting and exit codes
 
-| Code | Signification |
+Results are written to `stdout`. Warnings, diagnostics, and errors are written to `stderr`. Both the installed command and `python -m rdappy` use UTF-8 output, including when redirected.
+
+| Code | Meaning |
 | --- | --- |
-| `0` | Succès. Une recherche valide sans résultat est aussi un succès. |
-| `1` | Échec réseau, erreur RDAP ou données invalides. |
-| `2` | Arguments invalides. |
-| `130` | Interruption par l’utilisateur. |
+| `0` | Success. A valid search with no results also succeeds. |
+| `1` | Network failure, RDAP error, or invalid data. |
+| `2` | Invalid arguments. |
+| `130` | Interrupted by the user. |
 
-Les réponses sont limitées à 16 Mio. Les redirections HTTP(S) sont bornées, les redirections HTTPS vers HTTP sont refusées et aucun nouvel essai automatique ne contourne un code `429`.
+Responses are limited to 16 MiB. HTTP(S) redirects are bounded, HTTPS-to-HTTP redirects are rejected, and no automatic retry bypasses a `429` response.
 
-## Construction des distributions
+## Building distributions
 
-Le build utilise uniquement Python et `setuptools` à la version fixée dans `pyproject.toml`. Il ne compile aucun composant natif et ne télécharge rien pendant la construction.
+The build uses Python and the `setuptools` version pinned in `pyproject.toml`. It does not compile native components or download anything during the build.
 
-Avec `setuptools==82.0.1` déjà installé :
+With `setuptools==82.0.1` already installed:
 
 ```console
 python tools/build.py
 ```
 
-Les fichiers suivants sont créés dans `dist/` :
+The following files are created in `dist/`:
 
 ```text
-rdappy-1.0.0-py3-none-any.whl
-rdappy-1.0.0.tar.gz
+rdappy-1.0.1-py3-none-any.whl
+rdappy-1.0.1.tar.gz
 rdappy.py
 SHA256SUMS
 ```
 
-Le wheel contient le seul module applicatif et ses métadonnées. L’archive source comprend également la documentation, les tests et l’outil de construction. Les horodatages et les métadonnées des archives sont normalisés pour rendre les builds reproductibles à sources et outils identiques. La variable `SOURCE_DATE_EPOCH` permet de fixer explicitement la date de référence.
+The wheel contains the single application module and its metadata. The source archive also includes the documentation, tests, and build tool. Archive timestamps and metadata are normalized to make builds reproducible with identical sources and tools. Set `SOURCE_DATE_EPOCH` to choose an explicit reference timestamp.
 
-Les tests utilisent uniquement Python et un serveur HTTP de boucle locale ; ils n’interrogent pas Internet :
+Tests use only Python and a loopback HTTP server. They do not access the Internet:
 
 ```console
 python -B -m unittest discover -s tests -v
 ```
 
-## Licence et origine
+## License and provenance
 
-rdappy reprend les fonctionnalités de [App::rdapper](https://github.com/gbxyz/rdapper), de CentralNic Ltd. et Gavin Brown, dans une implémentation Python distincte. Les crédits, références et différences figurent dans [NOTICE](NOTICE). La licence [Artistic 1.0 de Perl](LICENSE) est également intégrée dans le fichier applicatif pour permettre sa distribution autonome.
+rdappy implements the functionality of [App::rdapper](https://github.com/gbxyz/rdapper), by CentralNic Ltd. and Gavin Brown, as a separate Python application. Credits, references, and implementation differences are listed in [NOTICE](NOTICE). The [Perl Artistic License 1.0](LICENSE) is also embedded in the application file so it can be distributed on its own.

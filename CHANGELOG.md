@@ -1,12 +1,19 @@
 # Changelog
 
+## 1.0.1 — 2026-10-28
+
+- Make English the primary edition on `main`, including command-line help, diagnostics, labels, documentation, and source comments.
+- Preserve the original French edition on the `fr` branch.
+- Default `Accept-Language` to `en`, independently of the system locale. The `--language` option continues to control the response language requested from RDAP servers.
+- Publish matching English distributions with the `rdappy` console command.
+
 ## 1.0.0 — 2026-10-28
 
-- Client RDAP autonome en un seul module Python, sans dépendance à l’exécution.
-- Commande `rdappy` installable sur Windows, Linux et macOS.
-- Domaines, TLD, IPv4/IPv6 et CIDR, ASN, entités et serveurs DNS.
-- Découverte des services dans les registres IANA et renvois registrar.
-- Recherche de domaines, sortie JSON, affichage court et lecture de JSON local.
-- Contacts jCard, DNSSEC, événements, statuts, TTL, avis et champs masqués.
-- Authentification limitée à l’origine choisie, vérification TLS et cache optionnel.
-- Distributions wheel et source, empreintes SHA-256 et tests hors ligne.
+- Standalone RDAP client in a single Python module, with no runtime dependencies.
+- Installable `rdappy` command on Windows, Linux, and macOS.
+- Support for domain names, TLDs, IPv4/IPv6 and CIDR prefixes, ASNs, entities, and nameservers.
+- IANA bootstrap discovery and registrar referrals.
+- Domain search, JSON output, short output, and local JSON input.
+- jCard contacts, DNSSEC, events, statuses, TTL values, notices, and redacted fields.
+- Origin-scoped authentication, TLS verification, and optional caching.
+- Wheel and source distributions, SHA-256 checksums, and offline tests.

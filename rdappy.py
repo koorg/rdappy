@@ -18,7 +18,6 @@ import hashlib
 from http.client import HTTPException
 import ipaddress
 import json
-import locale
 import math
 import os
 from pathlib import Path
@@ -35,7 +34,7 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import quote, unquote, urlencode, urljoin, urlsplit, urlunsplit
 from urllib.request import HTTPRedirectHandler, HTTPSHandler, Request, build_opener
 
-VERSION = "1.0.0"
+VERSION = "1.0.1"
 IANA = "https://data.iana.org/rdap/"
 MAX_BYTES = 16 * 1024 * 1024
 SEARCH_KEYS = ("domainSearchResults", "nameserverSearchResults", "entitySearchResults", "domainSearchResult", "nameserverSearchResult", "entitySearchResult")
@@ -56,7 +55,7 @@ class Response:
 
 
 def items(value):
-    """Tolerer les champs optionnels absents ou null sans inventer de donnees."""
+    """Handle absent or null optional fields without inventing data."""
     return value if isinstance(value, list) else []
 
 
@@ -73,7 +72,7 @@ def text(value):
 
 
 def terminal_text(value):
-    # Les donnees RDAP ne doivent pas pouvoir injecter des commandes de terminal.
+    # Prevent RDAP data from injecting terminal control sequences.
     return "".join(c for c in text(value) if c in "\n\t" or (ord(c) >= 32 and not 127 <= ord(c) < 160))
 
 
@@ -103,7 +102,7 @@ def domain_name(value, pattern=False):
             raise ValueError
         return result
     except (ValueError, UnicodeError):
-        raise RdapError(f"Nom de domaine invalide : {value!r}") from None
+        raise RdapError(f"Invalid domain name: {value!r}") from None
 
 
 def ip_network(value):
@@ -112,13 +111,13 @@ def ip_network(value):
             raise ValueError
         return ipaddress.ip_network(value, strict=False)
     except ValueError:
-        raise RdapError(f"Adresse ou prefixe IP invalide : {value!r}") from None
+        raise RdapError(f"Invalid IP address or prefix: {value!r}") from None
 
 
 def as_number(value):
     number = re.sub(r"^asn?", "", value, flags=re.I)
     if not re.fullmatch(r"[0-9]{1,10}", number) or int(number) > 4294967295:
-        raise RdapError(f"Numero AS invalide : {value!r}")
+        raise RdapError(f"Invalid AS number: {value!r}")
     return int(number)
 
 
@@ -133,24 +132,24 @@ def detect_type(value):
 
 
 def reverse_network(name):
-    """Convertir une zone inverse en reseau, sans perdre les labels zero."""
+    """Convert a reverse zone to a network while preserving zero labels."""
     name = name.lower().rstrip(".")
     if name.endswith(".in-addr.arpa"):
         labels = name[:-13].split(".")
         if not 1 <= len(labels) <= 4 or not all(re.fullmatch(r"[0-9]{1,3}", x) and int(x) < 256 for x in labels):
-            raise RdapError(f"Zone inverse IPv4 invalide : {name}")
+            raise RdapError(f"Invalid IPv4 reverse zone: {name}")
         return ip_network(".".join(list(reversed(labels)) + ["0"] * (4 - len(labels))) + f"/{len(labels) * 8}")
     if name.endswith(".ip6.arpa"):
         labels = name[:-9].split(".")
         if not 1 <= len(labels) <= 32 or not all(re.fullmatch(r"[0-9a-f]", x) for x in labels):
-            raise RdapError(f"Zone inverse IPv6 invalide : {name}")
+            raise RdapError(f"Invalid IPv6 reverse zone: {name}")
         number = int("".join(reversed(labels)).ljust(32, "0"), 16)
         return ip_network(f"{ipaddress.IPv6Address(number)}/{len(labels) * 4}")
     return None
 
 
 def reverse_name(network):
-    # Aux limites non alignees, utiliser la zone parente couvrant le bloc.
+    # For unaligned prefixes, use the parent reverse zone covering the block.
     step = 8 if network.version == 4 else 4
     count = network.prefixlen // step
     if network.version == 4:
@@ -171,7 +170,7 @@ def network_from_record(data):
         prefix = start.max_prefixlen - (int(start) ^ int(end)).bit_length()
         return ipaddress.ip_network(f"{start}/{prefix}", strict=False)
     except (KeyError, ValueError, TypeError):
-        raise RdapError("La reponse ne contient pas une plage IP valide.") from None
+        raise RdapError("The response does not contain a valid IP address range.") from None
 
 
 def http_url(url):
@@ -181,12 +180,12 @@ def http_url(url):
         parsed = urlsplit(url)
         if parsed.scheme not in ("https", "http") or not parsed.hostname or parsed.username is not None or parsed.password is not None:
             raise ValueError
-        parsed.port  # Valider aussi le port.
+        parsed.port  # Validate the port as well.
         if any(c.isspace() or ord(c) < 32 for c in url):
             raise ValueError
         return urlunsplit(parsed._replace(fragment=""))
     except ValueError:
-        raise RdapError(f"URL HTTP(S) invalide : {url!r}") from None
+        raise RdapError(f"Invalid HTTP(S) URL: {url!r}") from None
 
 
 def origin(url):
@@ -225,13 +224,13 @@ def decode_document(raw, url):
     try:
         data = json.loads(raw, parse_constant=reject_json_constant, parse_float=finite_float)
     except (ValueError, UnicodeError, RecursionError):
-        raise RdapError(f"Reponse JSON invalide : {url}") from None
+        raise RdapError(f"Invalid JSON response: {url}") from None
     if not isinstance(data, dict):
-        raise RdapError(f"La reponse JSON doit etre un objet : {url}")
+        raise RdapError(f"The JSON response must be an object: {url}")
     if "errorCode" in data:
         code = data["errorCode"]
         description = text(data.get("description"))
-        raise RdapError(f"{code} {text(data.get('title', 'Erreur RDAP'))}" + (f" : {description}" if description else ""), code if isinstance(code, int) else None)
+        raise RdapError(f"{code} {text(data.get('title', 'RDAP error'))}" + (f": {description}" if description else ""), code if isinstance(code, int) else None)
     return Response(data, url)
 
 
@@ -239,7 +238,7 @@ def local_document(value):
     if value.lower().startswith("file://"):
         parsed = urlsplit(value)
         if parsed.netloc not in ("", "localhost"):
-            raise RdapError("Les URL file:// distantes ne sont pas prises en charge.")
+            raise RdapError("Remote file:// URLs are not supported.")
         path = unquote(parsed.path)
         if os.name == "nt" and re.match(r"^/[a-z]:", path, re.I):
             path = path[1:]
@@ -249,9 +248,9 @@ def local_document(value):
         with open(path, "rb") as stream:
             raw = stream.read(MAX_BYTES + 1)
     except OSError as exc:
-        raise RdapError(f"Lecture impossible : {path} : {exc}") from None
+        raise RdapError(f"Cannot read file: {path}: {exc}") from None
     if len(raw) > MAX_BYTES:
-        raise RdapError("Le fichier JSON depasse 16 Mio.")
+        raise RdapError("The JSON file exceeds 16 MiB.")
     return decode_document(raw, Path(path).resolve().as_uri())
 
 
@@ -259,7 +258,7 @@ class SafeRedirect(HTTPRedirectHandler):
     def redirect_request(self, req, fp, code, msg, headers, newurl):
         newurl = http_url(newurl)
         if urlsplit(req.full_url).scheme == "https" and urlsplit(newurl).scheme == "http":
-            raise RdapError("Redirection HTTPS vers HTTP refusee.")
+            raise RdapError("HTTPS-to-HTTP redirects are not allowed.")
         redirected = super().redirect_request(req, fp, code, msg, headers, newurl)
         if redirected is not None:
             redirected.remove_header("Authorization")
@@ -326,7 +325,7 @@ class Client:
                     json.dump(entry, stream, ensure_ascii=False)
                 os.replace(temporary, path)
             except OSError as exc:
-                self.trace(f"cache disque indisponible : {exc}")
+                self.trace(f"Disk cache unavailable: {exc}")
             finally:
                 if temporary is not None:
                     try:
@@ -366,18 +365,18 @@ class Client:
                     data = {}
                 if not isinstance(data, dict):
                     data = {}
-                message = f"HTTP {exc.code} : {text(data.get('title') or exc.reason)}"
+                message = f"HTTP {exc.code}: {text(data.get('title') or exc.reason)}"
                 if data.get("description"):
-                    message += " : " + text(data["description"])
+                    message += ": " + text(data["description"])
                 if exc.headers.get("Retry-After"):
                     message += " (Retry-After: " + exc.headers["Retry-After"] + ")"
                 raise RdapError(f"{message} [{url}]", exc.code) from None
             finally:
                 exc.close()
         except (URLError, TimeoutError, OSError, ValueError, HTTPException) as exc:
-            raise RdapError(f"Requete impossible : {url} : {getattr(exc, 'reason', exc)}") from None
+            raise RdapError(f"Request failed: {url}: {getattr(exc, 'reason', exc)}") from None
         if len(raw) > MAX_BYTES:
-            raise RdapError(f"La reponse depasse 16 Mio : {url}")
+            raise RdapError(f"The response exceeds 16 MiB: {url}")
         response = decode_document(raw, final_url)
         if not use_auth and not any(directive in cache_control for directive in ("no-store", "no-cache", "private")):
             age = re.search(r"(?:^|,)\s*max-age\s*=\s*\"?([0-9]+)", cache_control)
@@ -389,10 +388,10 @@ class Client:
         data = self.fetch(IANA + name + ".json", ttl=86400).data
         services = data.get("services")
         if not isinstance(services, list):
-            raise RdapError(f"Bootstrap IANA {name} invalide.")
+            raise RdapError(f"Invalid IANA {name} bootstrap.")
         result = []
         for entry in services:
-            # object-tags contient [contacts, tags, urls], les autres [cles, urls].
+            # object-tags uses [contacts, tags, urls]; other registries use [keys, urls].
             if not isinstance(entry, list) or len(entry) != (3 if name == "object-tags" else 2):
                 continue
             keys, urls = entry[-2:]
@@ -435,12 +434,12 @@ class Client:
                 return min(matches, key=lambda match: match[0])[1]
         elif kind == "entity":
             if "-" not in value:
-                raise RdapError("Un handle d'entite doit avoir un tag (ex. ADMIN2521-ARIN), ou utiliser --server.")
+                raise RdapError("An entity handle must include a tag (for example, ADMIN2521-ARIN), or use --server.")
             tag = value.rsplit("-", 1)[-1].lower()
             for keys, urls in self.services("object-tags"):
                 if tag in [key.lower() for key in keys]:
                     return urls
-        raise RdapError(f"Aucun service RDAP IANA pour {value!r}. Utiliser --server URL si un serveur est connu.")
+        raise RdapError(f"No IANA RDAP service found for {value!r}. Use --server URL if you know a service.")
 
     def candidates(self, urls):
         for index, url in enumerate(urls):
@@ -449,8 +448,8 @@ class Client:
             except RdapError as exc:
                 if index == len(urls) - 1 or (exc.status is not None and exc.status < 500):
                     raise
-                self.trace(f"Echec du serveur, essai suivant : {exc}")
-        raise RdapError("Aucun serveur RDAP disponible.")
+                self.trace(f"Server failed; trying the next service: {exc}")
+        raise RdapError("No RDAP server is available.")
 
     def lookup(self, value, kind=None, *, server=None, reverse=False):
         kind = kind or detect_type(value)
@@ -459,7 +458,7 @@ class Client:
         if kind in ("domain", "nameserver", "tld"):
             value = domain_name(value)
             if kind == "tld" and "." in value:
-                raise RdapError("--tld attend un seul label, par exemple fr ou com.")
+                raise RdapError("--tld requires a single label, such as com or fr.")
         elif kind == "ip":
             network = ip_network(value)
             value = str(network) if "/" in value else str(network.network_address)
@@ -485,10 +484,10 @@ class Client:
                 try:
                     registrar = self.fetch(url, authenticated=True)
                     if registrar.data.get("objectClassName") != "domain":
-                        raise RdapError("La reponse du registrar ne contient pas un objet domaine RDAP.")
+                        raise RdapError("The registrar response does not contain an RDAP domain object.")
                     return [response, registrar] if mode == "both" else [registrar]
                 except RdapError as exc:
-                    print("Avertissement : renvoi registrar indisponible; resultat du registre conserve. " + terminal_text(exc), file=sys.stderr)
+                    print("Warning: registrar referral unavailable; displaying the registry record. " + terminal_text(exc), file=sys.stderr)
                     return [response]
         return [response]
 
@@ -506,50 +505,23 @@ class Client:
             try:
                 result = self.fetch(url, authenticated=True)
                 if not any(isinstance(result.data.get(key), list) for key in ("domainSearchResults", "domainSearchResult")):
-                    raise RdapError("La reponse ne contient pas domainSearchResults.")
+                    raise RdapError("The response does not contain domainSearchResults.")
                 responses.append(result)
             except RdapError as exc:
-                print("Avertissement : " + terminal_text(exc), file=sys.stderr)
+                print("Warning: " + terminal_text(exc), file=sys.stderr)
         if not responses:
-            raise RdapError("La recherche n'a abouti sur aucun serveur RDAP.")
+            raise RdapError("The search failed on every RDAP server.")
         return responses
 
 
-FRENCH = {
-    "Object type": "Type d'objet", "Domain Name": "Nom de domaine", "IP Network": "Réseau IP",
-    "Autonomous System": "Système autonome", "Entity": "Entité", "Nameserver": "Serveur DNS",
-    "Help": "Aide", "Name": "Nom", "Handle": "Identifiant", "Type": "Type", "Country": "Pays",
-    "Range": "Plage", "Parent": "Parent", "IP Address": "Adresse IP", "DNSSEC signed": "Zone signée DNSSEC",
-    "DNSSEC delegation signed": "Délégation signée DNSSEC", "DS Record": "Enregistrement DS",
-    "DNSKEY Record": "Enregistrement DNSKEY", "Status": "Statut", "Registration": "Création",
-    "Reregistration": "Réenregistrement", "Last changed": "Dernière modification", "Expiration": "Expiration",
-    "Deletion": "Suppression", "Transfer": "Transfert", "Locked": "Verrouillage", "Unlocked": "Déverrouillage",
-    "Last update of RDAP database": "Dernière mise à jour RDAP", "Registrar expiration": "Expiration chez le registrar",
-    "Registrant": "Titulaire", "Administrative": "Administratif", "Technical": "Technique", "Billing": "Facturation",
-    "Abuse": "Abus", "Registrar": "Registrar", "Reseller": "Revendeur", "Sponsor": "Parrain", "Proxy": "Mandataire",
-    "Contact": "Contact", "Address": "Adresse", "Street": "Rue", "City": "Ville", "State/Province": "Région",
-    "Postal Code": "Code postal", "PO Box": "Boîte postale", "Phone": "Téléphone", "Organization": "Organisation",
-    "Website": "Site web", "Title": "Titre", "Role": "Rôle", "Kind": "Catégorie", "Categories": "Catégories",
-    "Messaging": "Messagerie", "Contact Link": "Lien de contact", "Location": "Localisation", "Profile": "Profil",
-    "Notice": "Avis", "Remark": "Remarque", "Link": "Lien", "Redacted Fields": "Champs masqués",
-    "Reason": "Motif", "Registration Type": "Type d'enregistrement", "Platform Nameserver": "Serveur DNS de plateforme",
-    "Art Record": "Fiche artistique", "DNS TTL Values": "Valeurs TTL DNS", "yes": "oui", "no": "non",
-}
-
-
 class Formatter:
-    def __init__(self, *, short=False, color=False, language="en", width=None):
+    def __init__(self, *, short=False, color=False, width=None):
         self.short, self.color = short, color
-        self.fr = language.lower().startswith("fr")
         self.width = max(40, width or shutil.get_terminal_size((100, 24)).columns)
         self.lines = []
 
-    def tr(self, label):
-        label = text(label)
-        return FRENCH.get(label, label) if self.fr else label
-
     def kv(self, label, value="", indent=0):
-        label = terminal_text(self.tr(label)) + ":"
+        label = terminal_text(label) + ":"
         value = terminal_text(value)
         prefix = "  " * indent
         line = label + (" " + value if value else "")
@@ -623,22 +595,22 @@ class Formatter:
                 name = name.get("description") or name.get("type")
             if isinstance(reason, dict):
                 reason = reason.get("description") or reason.get("type")
-            self.kv("Redacted Fields", f"{text(name)} ({self.tr('Reason')}: {text(reason)})", indent)
+            self.kv("Redacted Fields", f"{text(name)} (Reason: {text(reason)})", indent)
 
     def display(self, data, indent=0, url="", depth=0):
         if depth > 16:
-            self.kv("Notice", "Profondeur maximale des objets imbriques atteinte.", indent)
+            self.kv("Notice", "Maximum nested object depth reached.", indent)
             return
         kind = data.get("objectClassName")
         classes = {"domain": "Domain Name", "ip network": "IP Network", "autnum": "Autonomous System", "entity": "Entity", "nameserver": "Nameserver", "help": "Help"}
         if kind is None and urlsplit(url).path.rstrip("/").endswith("/help"):
             kind = "help"
         if kind is None:
-            raise RdapError("La reponse ne contient pas objectClassName; utiliser --raw pour afficher le JSON.")
+            raise RdapError("The response has no objectClassName; use --raw to display its JSON.")
         if not isinstance(kind, str):
-            raise RdapError("objectClassName doit etre une chaine de caracteres.")
+            raise RdapError("objectClassName must be a string.")
         if indent == 0:
-            self.kv("Object type", self.tr(classes.get(kind, text(kind))))
+            self.kv("Object type", classes.get(kind, text(kind)))
             own = next((link.get("href") for link in objects(data.get("links")) if link.get("rel") == "self"), url)
             if own:
                 self.kv("URL", own)
@@ -656,7 +628,7 @@ class Formatter:
             if isinstance(secure, dict):
                 for key, label in (("zoneSigned", "DNSSEC signed"), ("delegationSigned", "DNSSEC delegation signed")):
                     if key in secure:
-                        self.kv(label, self.tr("yes" if secure[key] else "no"), indent)
+                        self.kv(label, "yes" if secure[key] else "no", indent)
                 for field, label, keys in (("dsData", "DS Record", ("keyTag", "algorithm", "digestType", "digest")), ("keyData", "DNSKEY Record", ("flags", "protocol", "algorithm", "publicKey"))):
                     for record in objects(secure.get(field)):
                         self.kv(label, " ".join(text(record.get(key)) for key in keys), indent)
@@ -705,8 +677,8 @@ class Formatter:
             self.kv("Status", value, indent)
         order = ("registrant", "administrative", "technical", "billing", "abuse", "registrar", "reseller", "sponsor", "proxy", "notifications", "noc")
         for entity in sorted(objects(data.get("entities")), key=lambda e: min((order.index(role) for role in items(e.get("roles")) if role in order), default=len(order))):
-            roles = ", ".join(self.tr(text(role).capitalize()) for role in items(entity.get("roles")))
-            label = "Contact" + (" " + roles if roles else "") if self.fr else (roles + " " if roles else "") + "Contact"
+            roles = ", ".join(text(role).capitalize() for role in items(entity.get("roles")))
+            label = (roles + " " if roles else "") + "Contact"
             self.kv(label, entity.get("handle", ""), indent)
             self.display(dict(entity, objectClassName="entity"), indent + 1, depth=depth + 1)
         if not self.short:
@@ -718,17 +690,6 @@ class Formatter:
         return "\n".join(self.lines)
 
 
-def preferred_language():
-    try:
-        value = os.environ.get("LC_ALL") or os.environ.get("LC_MESSAGES") or os.environ.get("LANG") or locale.getlocale()[0] or "en"
-    except (ValueError, TypeError):
-        value = "en"
-    value = value.split(".", 1)[0].split("@", 1)[0].replace("_", "-")
-    if value.lower().startswith("french"):
-        return "fr"
-    return value if re.fullmatch(r"[A-Za-z]{2,8}(?:-[A-Za-z0-9]{1,8})*", value) else "en"
-
-
 def positive_timeout(value):
     try:
         number = float(value)
@@ -736,40 +697,40 @@ def positive_timeout(value):
             raise ValueError
         return number
     except ValueError:
-        raise argparse.ArgumentTypeError("Le delai doit etre un nombre positif fini.") from None
+        raise argparse.ArgumentTypeError("The timeout must be a finite positive number.") from None
 
 
 def parser():
-    p = argparse.ArgumentParser(prog="rdappy", description="Client RDAP en un seul fichier Python, sans dependance externe.", epilog="Exemples : python rdappy.py example.com | --raw 1.1.1.1 | AS13335 | --search \"exampl*.com\".", allow_abbrev=False)
-    p.add_argument("query", nargs="?", metavar="OBJET", help="domaine, IP/CIDR, ASN, handle avec tag, TLD ou URL RDAP")
-    p.add_argument("--object", dest="named_query", metavar="OBJET", help="autre syntaxe pour fournir l'objet")
-    p.add_argument("--type", choices=TYPES, dest="kind", help="imposer le type d'objet")
+    p = argparse.ArgumentParser(prog="rdappy", description="A single-file Python RDAP client with no external dependencies.", epilog="Examples: rdappy example.com | rdappy --raw 1.1.1.1 | rdappy AS13335 | rdappy --search \"exampl*.com\".", allow_abbrev=False)
+    p.add_argument("query", nargs="?", metavar="OBJECT", help="domain, IP/CIDR, ASN, tagged handle, TLD or RDAP URL")
+    p.add_argument("--object", dest="named_query", metavar="OBJECT", help="alternative syntax for the query object")
+    p.add_argument("--type", choices=TYPES, dest="kind", help="set the object type explicitly")
     for kind in TYPES:
-        p.add_argument("--" + kind, dest="kind", action="store_const", const=kind, help=f"alias de --type={kind}")
+        p.add_argument("--" + kind, dest="kind", action="store_const", const=kind, help=f"alias for --type={kind}")
     mode = p.add_mutually_exclusive_group()
-    mode.add_argument("--registry", dest="mode", action="store_const", const="registry", help="reponse du registre uniquement")
-    mode.add_argument("--registrar", dest="mode", action="store_const", const="registrar", help="suivre le renvoi registrar (par defaut)")
-    mode.add_argument("--both", dest="mode", action="store_const", const="both", help="reponses du registre et du registrar")
+    mode.add_argument("--registry", dest="mode", action="store_const", const="registry", help="display only the registry record")
+    mode.add_argument("--registrar", dest="mode", action="store_const", const="registrar", help="follow the registrar referral (default)")
+    mode.add_argument("--both", dest="mode", action="store_const", const="both", help="display registry and registrar records")
     p.set_defaults(mode="registrar")
-    p.add_argument("--raw", "--json", action="store_true", help="afficher le JSON complet")
-    p.add_argument("--short", action="store_true", help="omettre liens, remarques, avis et champs masques")
-    p.add_argument("--search", action="store_true", help="rechercher des domaines (sans suffixe : tous les serveurs IANA)")
-    p.add_argument("--reverse", action="store_true", help="pour une IP, interroger la zone inverse du bloc attribue")
-    p.add_argument("--server", metavar="URL", help="URL de base du serveur RDAP a interroger")
-    p.add_argument("--auth", metavar="USER:PASS", help="HTTP Basic, limite a l'origine du premier serveur interroge")
-    p.add_argument("--timeout", type=positive_timeout, default=20, metavar="SECONDES", help="delai reseau par requete (defaut : 20)")
-    p.add_argument("--cache-dir", metavar="DOSSIER", help="activer le cache disque (300 s; bootstrap IANA : 24 h)")
-    p.add_argument("--bypass-cache", action="store_true", help="ignorer les caches et ne pas y ecrire")
-    p.add_argument("--file", metavar="JSON", help="lire un JSON local, sans requete reseau")
-    p.add_argument("--language", default=preferred_language(), metavar="LANGUE", help="Accept-Language et affichage fr/en (defaut : langue du systeme)")
-    p.add_argument("--nocolor", "--no-color", action="store_true", help="desactiver les couleurs ANSI")
+    p.add_argument("--raw", "--json", action="store_true", help="display the complete JSON response")
+    p.add_argument("--short", action="store_true", help="omit links, remarks, notices and redacted fields")
+    p.add_argument("--search", action="store_true", help="search domains (without a suffix: all IANA DNS services)")
+    p.add_argument("--reverse", action="store_true", help="for an IP, query the reverse zone of its allocated block")
+    p.add_argument("--server", metavar="URL", help="base URL of the RDAP server to query")
+    p.add_argument("--auth", metavar="USER:PASS", help="HTTP Basic credentials, scoped to the first queried origin")
+    p.add_argument("--timeout", type=positive_timeout, default=20, metavar="SECONDS", help="network timeout per request (default: 20)")
+    p.add_argument("--cache-dir", metavar="DIRECTORY", help="enable disk caching (300 s; IANA bootstrap: 24 h)")
+    p.add_argument("--bypass-cache", action="store_true", help="bypass caches and do not write to them")
+    p.add_argument("--file", metavar="JSON", help="read local JSON without making network requests")
+    p.add_argument("--language", default="en", metavar="LANGUAGE", help="Accept-Language request header (default: en); CLI output is always English")
+    p.add_argument("--nocolor", "--no-color", action="store_true", help="disable ANSI colors")
     p.add_argument("--nopager", action="store_true", help=argparse.SUPPRESS)
-    p.add_argument("--insecure", action="store_true", help="desactiver la verification des certificats TLS")
-    p.add_argument("--debug", action="store_true", help="afficher les URL interrogees sur stderr")
+    p.add_argument("--insecure", action="store_true", help="disable TLS certificate verification")
+    p.add_argument("--debug", action="store_true", help="print queried URLs to stderr")
     config = p.add_mutually_exclusive_group()
-    config.add_argument("--config", metavar="FICHIER", help="configuration, un argument par ligne (defaut : ~/.rdappy, puis ~/.rdapper)")
-    config.add_argument("--no-config", action="store_true", help="ignorer la configuration")
-    p.add_argument("--license", action="store_true", help="afficher la licence incluse dans ce fichier")
+    config.add_argument("--config", metavar="FILE", help="configuration, one argument per line (default: ~/.rdappy, then ~/.rdapper)")
+    config.add_argument("--no-config", action="store_true", help="ignore the configuration file")
+    p.add_argument("--license", action="store_true", help="display the embedded license")
     p.add_argument("--version", action="version", version=f"rdappy {VERSION}")
     return p
 
@@ -788,13 +749,13 @@ def configuration_args(argv):
             lines = stream.read(65537)
     except FileNotFoundError:
         if options.config:
-            raise RdapError(f"Configuration introuvable : {path}") from None
+            raise RdapError(f"Configuration file not found: {path}") from None
         return argv
     except (OSError, UnicodeError) as exc:
-        raise RdapError(f"Configuration illisible : {path} : {exc}") from None
+        raise RdapError(f"Cannot read configuration file: {path}: {exc}") from None
     if len(lines) > 65536:
-        raise RdapError("La configuration depasse 64 Kio.")
-    # Comme rdapper: arguments ajoutes apres la ligne de commande, un par ligne.
+        raise RdapError("The configuration file exceeds 64 KiB.")
+    # Match rdapper: append configuration arguments after the command line.
     return argv + [line.strip() for line in lines.splitlines() if line.strip() and not line.lstrip().startswith("#")]
 
 
@@ -807,27 +768,27 @@ def main(argv=None):
             print(ARTISTIC_LICENSE)
             return 0
         if args.query and args.named_query:
-            p.error("Fournir OBJET ou --object, un seul a la fois.")
+            p.error("Provide OBJECT or --object, not both.")
         value = args.query or args.named_query
         if args.file and (value or args.search or args.reverse):
-            p.error("--file attend uniquement un fichier JSON local.")
+            p.error("--file requires only a local JSON file.")
         if not value and not args.file:
-            p.error("Fournir un objet RDAP, ou utiliser --help.")
+            p.error("Provide an RDAP object, or use --help.")
         if not re.fullmatch(r"[A-Za-z]{2,8}(?:-[A-Za-z0-9]{1,8})*", args.language):
-            p.error("--language attend une balise comme fr, en ou fr-FR.")
+            p.error("--language requires a language tag such as en, en-US or fr.")
         if args.auth and (":" not in args.auth or ":" == args.auth or any(c in args.auth for c in "\r\n")):
-            p.error("--auth attend USER:PASS.")
+            p.error("--auth requires USER:PASS.")
         if args.auth and not (args.server or (value and (args.kind == "url" or detect_type(value) == "url"))):
-            p.error("--auth exige --server URL ou une URL RDAP explicite.")
+            p.error("--auth requires --server URL or an explicit RDAP URL.")
         if args.file and (args.auth or args.server):
-            p.error("--file ne peut pas etre combine avec --auth ou --server.")
+            p.error("--file cannot be combined with --auth or --server.")
         kind = args.kind or (detect_type(value) if value else None)
         if args.search and args.kind not in (None, "domain"):
-            p.error("--search est disponible pour les domaines uniquement.")
+            p.error("--search is available for domains only.")
         if args.reverse and (kind != "ip" or args.search):
-            p.error("--reverse attend une adresse IP ou un prefixe CIDR.")
+            p.error("--reverse requires an IP address or CIDR prefix.")
         if args.insecure:
-            print("Avertissement : verification des certificats TLS desactivee.", file=sys.stderr)
+            print("Warning: TLS certificate verification is disabled.", file=sys.stderr)
         client = Client(timeout=args.timeout, cache_dir=args.cache_dir, bypass=args.bypass_cache, auth=args.auth, language=args.language, debug=args.debug, insecure=args.insecure)
         if args.file:
             responses = [local_document(args.file)]
@@ -849,21 +810,21 @@ def main(argv=None):
                             seen.add(name.lower())
                 if not args.short:
                     for notice in objects(response.data.get("notices")):
-                        print("Avis : " + terminal_text(notice.get("title")) + " : " + terminal_text(notice.get("description")), file=sys.stderr)
+                        print("Notice: " + terminal_text(notice.get("title")) + ": " + terminal_text(notice.get("description")), file=sys.stderr)
         else:
-            formatter = Formatter(short=args.short, color=sys.stdout.isatty() and not args.nocolor and "NO_COLOR" not in os.environ, language=args.language)
+            formatter = Formatter(short=args.short, color=sys.stdout.isatty() and not args.nocolor and "NO_COLOR" not in os.environ)
             for response in responses:
                 print(formatter.render(response))
                 if len(responses) > 1:
                     print()
         return 0
     except RdapError as exc:
-        print("Erreur : " + terminal_text(exc), file=sys.stderr)
+        print("Error: " + terminal_text(exc), file=sys.stderr)
         return 1
     except BrokenPipeError:
         return 0
     except KeyboardInterrupt:
-        print("Interrompu.", file=sys.stderr)
+        print("Interrupted.", file=sys.stderr)
         return 130
 
 

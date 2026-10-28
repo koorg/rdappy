@@ -1,4 +1,4 @@
-rdappy 1.0.0
+rdappy 1.0.1
 Copyright (c) 2026 koorg.
 
 rdappy is a Python implementation of the functionality of App::rdapper 1.26.
@@ -23,3 +23,6 @@ offline JSON input, and valid JSON arrays for combined registry/registrar output
 Distributed under the Perl Artistic License 1.0 (Artistic-1.0-Perl).
 The complete license is provided in LICENSE and embedded in rdappy.py.
 The names of the original copyright holders do not imply endorsement.
+
+The English edition is maintained on the main branch. The original French
+edition is preserved on the fr branch at https://github.com/koorg/rdappy/tree/fr.
