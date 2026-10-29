@@ -1,4 +1,4 @@
-rdappy 1.1.1
+rdappy 1.1.2
 Copyright (c) 2026 koorg.
 
 rdappy is a Python implementation of the functionality of App::rdapper 1.26.
@@ -32,3 +32,6 @@ The complete BSD-2-Clause notice and new distribution formats were added on
 
 The English edition is maintained on the main branch. The original French
 edition is preserved on the fr branch at https://github.com/koorg/rdappy/tree/fr.
+
+Version 1.1.2 adds country indications with explicit registrant-address or
+network/ASN registration provenance, without additional data dependencies.

@@ -35,7 +35,7 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import quote, unquote, urlencode, urljoin, urlsplit, urlunsplit
 from urllib.request import HTTPRedirectHandler, HTTPSHandler, Request, build_opener
 
-VERSION = "1.1.1"
+VERSION = "1.1.2"
 IANA = "https://data.iana.org/rdap/"
 MAX_BYTES = 16 * 1024 * 1024
 SEARCH_KEYS = ("domainSearchResults", "nameserverSearchResults", "entitySearchResults", "domainSearchResult", "nameserverSearchResult", "entitySearchResult")
@@ -515,6 +515,26 @@ class Client:
         return responses
 
 
+def country_value(value, *, code_only=False):
+    """Accept a declared postal country or registration code, ignoring placeholders."""
+    if not isinstance(value, str):
+        return ""
+    value = value.strip()
+    if not value or len(value) > 100 or any(ord(char) < 32 or 127 <= ord(char) < 160 for char in value):
+        return ""
+    if re.fullmatch(r"[A-Za-z]{2}", value):
+        return value.upper() if value.upper() not in {"ZZ", "XX", "EU", "AP"} else ""
+    if code_only:
+        return ""
+    value = " ".join(value.split())
+    marker = re.sub(r"[\W_]+", "", value.casefold())
+    if "redact" in marker or marker in {"unknown", "undisclosed", "notdisclosed", "notprovided",
+            "notavailable", "notapplicable", "notpubliclydisclosed", "na", "none", "null",
+            "private", "privacy", "withheld", "dataprotected", "true", "false"}:
+        return ""
+    return value if any(char.isalpha() for char in value) else ""
+
+
 def owner_summary(responses):
     """Collect public registrant data without substituting other contact roles."""
     if not responses:
@@ -531,8 +551,15 @@ def owner_summary(responses):
         start, end = first["startAutnum"], first.get("endAutnum", first["startAutnum"])
         identifier = f"AS{start}" if start == end else f"AS{start} - AS{end}"
     summary = {"object_type": kind, "object": identifier, "organizations": [],
-               "registrants": [], "emails": [], "countries": [], "sources": []}
+               "registrants": [], "emails": [], "countries": [], "sources": [], "country_details": []}
     seen = {field: set() for field, value in summary.items() if isinstance(value, list)}
+    registration_countries, country_seen = [], set()
+
+    def add_country(country, basis, source, target):
+        key = (country.casefold(), basis, source)
+        if country and key not in country_seen:
+            country_seen.add(key)
+            target.append({"country": country, "basis": basis, "source": source})
 
     def add(field, value):
         value = text(value).strip()
@@ -548,6 +575,10 @@ def owner_summary(responses):
         if kind == "domain" and name and candidate and name.rstrip(".").casefold() != candidate.rstrip(".").casefold():
             raise RdapError("Registry and registrar records refer to different domain names.")
         add("sources", response.url)
+        if kind in ("ip network", "autnum"):
+            country = country_value(data.get("country"), code_only=True)
+            basis = "network_registration" if kind == "ip network" else "autnum_registration"
+            add_country(country, basis, response.url, registration_countries)
         # Entity roles apply to the immediate parent. A registrar's nested
         # registrant is not necessarily the domain's registrant.
         for entity in objects(data.get("entities")):
@@ -572,8 +603,10 @@ def owner_summary(responses):
                 elif key == "adr":
                     params = params if isinstance(params, dict) else {}
                     address = items(value)
-                    country = params.get("cc") or (address[6] if len(address) > 6 else "")
+                    cc = next((value for key, value in params.items() if isinstance(key, str) and key.casefold() == "cc"), None)
+                    country = country_value(cc, code_only=True) or country_value(address[6] if len(address) > 6 else "")
                     add("countries", country)
+                    add_country(country, "registrant_address", response.url, summary["country_details"])
             if not organizations and "org" in entity_kinds:
                 organizations = names
             for organization in organizations:
@@ -581,6 +614,8 @@ def owner_summary(responses):
             for contact_name in names:
                 if contact_name.casefold() not in [organization.casefold() for organization in organizations]:
                     add("registrants", contact_name)
+    if not summary["country_details"]:
+        summary["country_details"] = registration_countries
     return summary
 
 
@@ -764,9 +799,24 @@ class Formatter:
         label = {"domain": "Domain", "ip network": "Network", "autnum": "Autonomous System"}[summary["object_type"]]
         self.kv(label, summary["object"])
         self.kv("Organization", summary["organizations"] or "Not disclosed or not provided")
-        for field, label in (("registrants", "Registrant"), ("countries", "Country"), ("emails", "Email")):
+        for field, label in (("registrants", "Registrant"), ("emails", "Email")):
             if summary[field]:
                 self.kv(label, summary[field])
+        details = summary.get("country_details") or []
+        if details:
+            labels = {"registrant_address": "Country (registrant)", "network_registration": "Country (network registration)",
+                      "autnum_registration": "Country (ASN registration)"}
+            countries = {}
+            for detail in details:
+                values = countries.setdefault(detail["basis"], [])
+                if detail["country"].casefold() not in [value.casefold() for value in values]:
+                    values.append(detail["country"])
+            for basis, values in countries.items():
+                self.kv(labels.get(basis, "Country"), ", ".join(values))
+        elif summary.get("countries"):
+            self.kv("Country (registrant)", summary["countries"])
+        else:
+            self.kv("Country", "Not disclosed or not provided")
         return "\n".join(self.lines)
 
 

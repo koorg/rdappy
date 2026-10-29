@@ -447,6 +447,15 @@ class Tests(unittest.TestCase):
         self.assertEqual(error.exception.code, 2)
         self.assertEqual(requests, [])
 
+    def test_owner_country_labels_identify_the_basis_and_missing_data(self):
+        contact = owner_summary([Response(domain, base)])
+        self.assertIn("Country (registrant): FR", Formatter().render_owner(contact))
+        for data, label in (({"objectClassName": "ip network", "country": "US"}, "Country (network registration): US"),
+                            ({"objectClassName": "autnum", "country": "GB"}, "Country (ASN registration): GB")):
+            self.assertIn(label, Formatter().render_owner(owner_summary([Response(data, base)])))
+        missing = owner_summary([Response(dict(domain, entities=[]), base)])
+        self.assertIn("Country: Not disclosed or not provided", Formatter().render_owner(missing))
+
     def test_search_deduplicates_services_and_results(self):
         with patch.object(self.client, "services", return_value=[(["a"], [base + "registry/"]), (["b"], [base + "registry/"])]):
             self.assertEqual(len(self.client.search("exampl*")), 1)

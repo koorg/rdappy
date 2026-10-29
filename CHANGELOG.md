@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.1.2 — 2026-10-29
+
+- Show the country indication's basis in `--owner`: registrant address first, then network or ASN registration when needed.
+- Preserve registrant-only `countries` values and add `country_details` with the country, basis and source URL to focused JSON.
+- Normalize country-code case, ignore redaction placeholders, and keep conflicting published countries visible.
+- Display an explicit unavailable indication when public country data are absent, without inferring from domain suffixes or third-party contacts.
+- Extend offline coverage and run all application tests inside the container.
+
 ## 1.1.1 — 2026-10-29
 
 - Include the complete BSD-2-Clause conditions and disclaimer for Net::RDAP adaptations in every distribution, including the standalone application.

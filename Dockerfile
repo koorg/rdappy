@@ -1,6 +1,6 @@
 FROM python:3.13-slim@sha256:2d44738ebf4ce5f63b9d9ea871e9c7cfdc0426f7b0c97cac915fd88ded1d86bb
 
-ARG VERSION=1.1.1
+ARG VERSION=1.1.2
 ARG REVISION
 LABEL org.opencontainers.image.title="rdappy" \
       org.opencontainers.image.description="Single-file Python RDAP command-line client" \

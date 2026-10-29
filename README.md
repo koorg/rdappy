@@ -13,7 +13,7 @@ The English edition is maintained on `main`. The original French edition is pres
 [GitHub releases](https://github.com/koorg/rdappy/releases) include a universal wheel. After downloading it:
 
 ```console
-python -m pip install --user --no-deps rdappy-1.1.1-py3-none-any.whl
+python -m pip install --user --no-deps rdappy-1.1.2-py3-none-any.whl
 rdappy --version
 rdappy example.com
 ```
@@ -23,7 +23,7 @@ Omit `--user` when using an activated virtual environment. The installer creates
 For an isolated installation with an existing `pipx` installation:
 
 ```console
-pipx install ./rdappy-1.1.1-py3-none-any.whl
+pipx install ./rdappy-1.1.2-py3-none-any.whl
 ```
 
 From a local copy of the repository:
@@ -45,7 +45,7 @@ python rdappy.py example.com
 Download the architecture-independent `.deb` from the same release, then install it:
 
 ```console
-sudo apt install ./rdappy_1.1.1_all.deb
+sudo apt install ./rdappy_1.1.2_all.deb
 rdappy --owner example.com
 ```
 
@@ -56,8 +56,8 @@ The package installs `/usr/bin/rdappy` and requires the distribution's Python 3.
 An executable Linux amd64 container is published in [GitHub Packages](https://github.com/users/koorg/packages/container/package/rdappy):
 
 ```console
-docker run --rm ghcr.io/koorg/rdappy:1.1.1 --owner example.com
-docker run --rm ghcr.io/koorg/rdappy:1.1.1 --license
+docker run --rm ghcr.io/koorg/rdappy:1.1.2 --owner example.com
+docker run --rm ghcr.io/koorg/rdappy:1.1.2 --license
 ```
 
 The container runs as an unprivileged numeric user. GitHub may require `docker login ghcr.io` when the package is private. The wheel and Debian package are downloadable release assets; GitHub Packages lists the container because it does not provide Python or Debian registries.
@@ -67,17 +67,17 @@ The container runs as an unprivileged numeric user. GitHub may require `docker l
 ```console
 rdappy example.com
 rdappy --owner example.com
-rdappy --owner 1.1.1.1
+rdappy --owner 1.1.2.1
 rdappy --registry --short example.com
 rdappy --both --raw rdap.org
-rdappy 1.1.1.1
+rdappy 1.1.2.1
 rdappy 2606:4700:4700::1111
 rdappy 192.0.2.0/24
 rdappy AS13335
 rdappy --tld com
 rdappy --entity ADMIN2521-ARIN
 rdappy --nameserver a.root-servers.net
-rdappy --reverse 1.1.1.1
+rdappy --reverse 1.1.2.1
 rdappy --search nic.fr
 rdappy --search "exampl*.com"
 rdappy https://rdap.org/domain/example.com
@@ -121,7 +121,7 @@ A `404` result means that the object was not found in the queried service. It do
 
 ```console
 rdappy --owner example.com
-rdappy --owner 1.1.1.1
+rdappy --owner 1.1.2.1
 rdappy --owner --raw example.com
 rdappy --owner --registry example.com
 ```
@@ -130,9 +130,21 @@ rdappy --owner --registry example.com
 
 Only entities explicitly assigned the `registrant` role on the queried object are used. Registrar, technical, administrative, and abuse contacts are excluded. A network label is never used as an organization name. An entity's formatted name is used as its organization only when its jCard explicitly identifies it as an organization.
 
-For domains, registry and registrar data are combined and duplicate values are removed. Use `--registry` or `--registrar` to select one source explicitly. `--owner --raw` produces focused JSON with `object_type`, `object`, `organizations`, `registrants`, `emails`, `countries`, and `sources` fields; `--raw` without `--owner` continues to return the complete RDAP response.
+For domains, registry and registrar data are combined and duplicate values are removed. Use `--registry` or `--registrar` to select one source explicitly. `--owner --raw` produces focused JSON with `object_type`, `object`, `organizations`, `registrants`, `emails`, `countries`, `sources`, and `country_details` fields; `--raw` without `--owner` continues to return the complete RDAP response.
 
-This mode also supports ASNs and local JSON files. It cannot be combined with `--search`. Contact countries are taken from registrant addresses and are not IP geolocation. A network registrant may be an operator or hosting provider, and a domain registrant may be a privacy service; this summary does not identify an undisclosed end user or beneficial owner.
+This mode also supports ASNs and local JSON files. It cannot be combined with `--search`. A network registrant may be an operator or hosting provider, and a domain registrant may be a privacy service; this summary does not identify an undisclosed end user or beneficial owner.
+
+The country indication always identifies its basis:
+
+- `Country (registrant)` comes from the direct registrant's postal address. A valid `cc` parameter takes priority over the country-name component.
+- `Country (network registration)` or `Country (ASN registration)` uses the record's declared two-letter `country` only when no registrant address country is available.
+- `Country: Not disclosed or not provided` means no usable public country was supplied. Conflicting published countries are retained.
+
+These are administrative registration data, not physical IP geolocation. Domain suffixes, registrar addresses and hosting locations are not used to infer a registrant's country. No additional service or database is queried.
+
+In `--owner --raw`, the existing `countries` array remains limited to registrant address countries. The new `country_details` array contains the selected indications with `country`, `basis` (`registrant_address`, `network_registration` or `autnum_registration`), and `source` (the RDAP URL or local file URI). Repeated evidence is deduplicated, and fallback registration data are not presented as registrant addresses.
+
+These fields follow [RDAP registration data](https://www.rfc-editor.org/rfc/rfc9083.html#section-5.4) and the [vCard country-code parameter](https://www.rfc-editor.org/rfc/rfc8605.html#section-3.1).
 
 ## Configuration
 
@@ -176,9 +188,9 @@ python tools/build.py
 The following files are created in `dist/`:
 
 ```text
-rdappy-1.1.1-py3-none-any.whl
-rdappy-1.1.1.tar.gz
-rdappy_1.1.1_all.deb
+rdappy-1.1.2-py3-none-any.whl
+rdappy-1.1.2.tar.gz
+rdappy_1.1.2_all.deb
 rdappy.py
 SHA256SUMS
 ```
@@ -194,7 +206,7 @@ python -B tools/build.py --deb-only
 Published author and maintainer fields use the GitHub pseudonym `koorg`. Audit tracked sources, reachable Git history, and explicitly named archives without printing host identifiers:
 
 ```console
-python -B tools/audit_distribution.py --history --github-profile dist/rdappy-1.1.1-py3-none-any.whl dist/rdappy-1.1.1.tar.gz dist/rdappy_1.1.1_all.deb
+python -B tools/audit_distribution.py --history --github-profile dist/rdappy-1.1.2-py3-none-any.whl dist/rdappy-1.1.2.tar.gz dist/rdappy_1.1.2_all.deb
 ```
 
 Omit `--github-profile` for a completely offline audit. Local host identifiers are checked in either mode. The container build context is restricted to the application and its license files.
