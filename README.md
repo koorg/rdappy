@@ -136,13 +136,13 @@ This mode also supports ASNs and local JSON files. It cannot be combined with `-
 
 The country indication always identifies its basis:
 
-- `Country (registrant)` comes from the direct registrant's postal address. A valid `cc` parameter takes priority over the country-name component.
+- `Country (registrant)` comes from the direct registrant's postal address. A valid `cc` parameter takes priority over the country-name component, followed by a recognized country name on the last line of an unstructured postal address. Country names are recognized using an embedded public-domain IANA table; ambiguous state codes and bare `Georgia` lines are ignored.
 - `Country (network registration)` or `Country (ASN registration)` uses the record's declared two-letter `country` only when no registrant address country is available.
 - `Country: Not disclosed or not provided` means no usable public country was supplied. Conflicting published countries are retained.
 
 These are administrative registration data, not physical IP geolocation. Domain suffixes, registrar addresses and hosting locations are not used to infer a registrant's country. No additional service or database is queried.
 
-In `--owner --raw`, the existing `countries` array remains limited to registrant address countries. The new `country_details` array contains the selected indications with `country`, `basis` (`registrant_address`, `network_registration` or `autnum_registration`), and `source` (the RDAP URL or local file URI). Repeated evidence is deduplicated, and fallback registration data are not presented as registrant addresses.
+In `--owner --raw`, the existing `countries` array remains limited to registrant address countries. Recognized country names and codes are normalized to two-letter codes. The new `country_details` array contains the selected indications with `country`, `basis` (`registrant_address`, `network_registration` or `autnum_registration`), and `source` (the RDAP URL or local file URI). Repeated evidence is deduplicated, and fallback registration data are not presented as registrant addresses.
 
 These fields follow [RDAP registration data](https://www.rfc-editor.org/rfc/rfc9083.html#section-5.4) and the [vCard country-code parameter](https://www.rfc-editor.org/rfc/rfc8605.html#section-3.1).
 

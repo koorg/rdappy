@@ -4,7 +4,7 @@
 
 - Show the country indication's basis in `--owner`: registrant address first, then network or ASN registration when needed.
 - Preserve registrant-only `countries` values and add `country_details` with the country, basis and source URL to focused JSON.
-- Normalize country-code case, ignore redaction placeholders, and keep conflicting published countries visible.
+- Recognize ARIN-style unstructured postal country names using an embedded public-domain IANA table, normalize codes, ignore redaction placeholders, and retain conflicting published countries.
 - Display an explicit unavailable indication when public country data are absent, without inferring from domain suffixes or third-party contacts.
 - Extend offline coverage and run all application tests inside the container.
 

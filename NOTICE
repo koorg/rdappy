@@ -35,3 +35,7 @@ edition is preserved on the fr branch at https://github.com/koorg/rdappy/tree/fr
 
 Version 1.1.2 adds country indications with explicit registrant-address or
 network/ASN registration provenance, without additional data dependencies.
+
+Country-name recognition uses the public-domain IANA tzdb iso3166.tab
+table, with common name aliases. Source: https://data.iana.org/time-zones/tzdb/iso3166.tab
+Data SHA256: 837c80785080c8433fd9d4ea87e78f161ac7a40389301c5153d4f90198baeb2a

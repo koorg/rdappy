@@ -30,6 +30,7 @@ import sys
 import tempfile
 import textwrap
 import time
+import unicodedata
 from dataclasses import dataclass
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote, unquote, urlencode, urljoin, urlsplit, urlunsplit
@@ -515,6 +516,303 @@ class Client:
         return responses
 
 
+# Country-name data: IANA tzdb iso3166.tab (public domain).
+# https://data.iana.org/time-zones/tzdb/iso3166.tab
+# SHA256: 837c80785080c8433fd9d4ea87e78f161ac7a40389301c5153d4f90198baeb2a
+COUNTRY_NAMES = {
+    'afghanistan': 'AF',
+    'aland islands': 'AX',
+    'albania': 'AL',
+    'algeria': 'DZ',
+    'allemagne': 'DE',
+    'andorra': 'AD',
+    'angola': 'AO',
+    'anguilla': 'AI',
+    'antarctica': 'AQ',
+    'antigua barbuda': 'AG',
+    'argentina': 'AR',
+    'armenia': 'AM',
+    'aruba': 'AW',
+    'australia': 'AU',
+    'austria': 'AT',
+    'azerbaijan': 'AZ',
+    'bahamas': 'BS',
+    'bahrain': 'BH',
+    'bangladesh': 'BD',
+    'barbados': 'BB',
+    'belarus': 'BY',
+    'belgique': 'BE',
+    'belgium': 'BE',
+    'belize': 'BZ',
+    'benin': 'BJ',
+    'bermuda': 'BM',
+    'bhutan': 'BT',
+    'bolivia': 'BO',
+    'bosnia herzegovina': 'BA',
+    'botswana': 'BW',
+    'bouvet island': 'BV',
+    'brazil': 'BR',
+    'britain uk': 'GB',
+    'british indian ocean territory': 'IO',
+    'brunei': 'BN',
+    'bulgaria': 'BG',
+    'burkina faso': 'BF',
+    'burundi': 'BI',
+    'cambodia': 'KH',
+    'cameroon': 'CM',
+    'canada': 'CA',
+    'cape verde': 'CV',
+    'caribbean nl': 'BQ',
+    'cayman islands': 'KY',
+    'central african rep': 'CF',
+    'chad': 'TD',
+    'chile': 'CL',
+    'china': 'CN',
+    'chine': 'CN',
+    'christmas island': 'CX',
+    'cocos keeling islands': 'CC',
+    'colombia': 'CO',
+    'comoros': 'KM',
+    'congo dem rep': 'CD',
+    'congo rep': 'CG',
+    'cook islands': 'CK',
+    'costa rica': 'CR',
+    'cote divoire': 'CI',
+    'croatia': 'HR',
+    'cuba': 'CU',
+    'curacao': 'CW',
+    'cyprus': 'CY',
+    'czech republic': 'CZ',
+    'czechia': 'CZ',
+    'denmark': 'DK',
+    'djibouti': 'DJ',
+    'dominica': 'DM',
+    'dominican republic': 'DO',
+    'east timor': 'TL',
+    'ecuador': 'EC',
+    'egypt': 'EG',
+    'el salvador': 'SV',
+    'equatorial guinea': 'GQ',
+    'eritrea': 'ER',
+    'espagne': 'ES',
+    'estonia': 'EE',
+    'eswatini swaziland': 'SZ',
+    'etats unis': 'US',
+    'etats unis d amerique': 'US',
+    'ethiopia': 'ET',
+    'falkland islands': 'FK',
+    'faroe islands': 'FO',
+    'fiji': 'FJ',
+    'finland': 'FI',
+    'france': 'FR',
+    'french guiana': 'GF',
+    'french polynesia': 'PF',
+    'french s terr': 'TF',
+    'gabon': 'GA',
+    'gambia': 'GM',
+    'georgia': 'GE',
+    'germany': 'DE',
+    'ghana': 'GH',
+    'gibraltar': 'GI',
+    'great britain': 'GB',
+    'greece': 'GR',
+    'greenland': 'GL',
+    'grenada': 'GD',
+    'guadeloupe': 'GP',
+    'guam': 'GU',
+    'guatemala': 'GT',
+    'guernsey': 'GG',
+    'guinea': 'GN',
+    'guinea bissau': 'GW',
+    'guyana': 'GY',
+    'haiti': 'HT',
+    'heard island mcdonald islands': 'HM',
+    'honduras': 'HN',
+    'hong kong': 'HK',
+    'hungary': 'HU',
+    'iceland': 'IS',
+    'india': 'IN',
+    'indonesia': 'ID',
+    'iran': 'IR',
+    'iraq': 'IQ',
+    'ireland': 'IE',
+    'isle of man': 'IM',
+    'israel': 'IL',
+    'italie': 'IT',
+    'italy': 'IT',
+    'jamaica': 'JM',
+    'japan': 'JP',
+    'japon': 'JP',
+    'jersey': 'JE',
+    'jordan': 'JO',
+    'kazakhstan': 'KZ',
+    'kenya': 'KE',
+    'kiribati': 'KI',
+    'korea north': 'KP',
+    'korea south': 'KR',
+    'kuwait': 'KW',
+    'kyrgyzstan': 'KG',
+    'laos': 'LA',
+    'latvia': 'LV',
+    'lebanon': 'LB',
+    'lesotho': 'LS',
+    'liberia': 'LR',
+    'libya': 'LY',
+    'liechtenstein': 'LI',
+    'lithuania': 'LT',
+    'luxembourg': 'LU',
+    'macau': 'MO',
+    'madagascar': 'MG',
+    'malawi': 'MW',
+    'malaysia': 'MY',
+    'maldives': 'MV',
+    'mali': 'ML',
+    'malta': 'MT',
+    'marshall islands': 'MH',
+    'martinique': 'MQ',
+    'mauritania': 'MR',
+    'mauritius': 'MU',
+    'mayotte': 'YT',
+    'mexico': 'MX',
+    'micronesia': 'FM',
+    'moldova': 'MD',
+    'monaco': 'MC',
+    'mongolia': 'MN',
+    'montenegro': 'ME',
+    'montserrat': 'MS',
+    'morocco': 'MA',
+    'mozambique': 'MZ',
+    'myanmar burma': 'MM',
+    'namibia': 'NA',
+    'nauru': 'NR',
+    'nepal': 'NP',
+    'netherlands': 'NL',
+    'new caledonia': 'NC',
+    'new zealand': 'NZ',
+    'nicaragua': 'NI',
+    'niger': 'NE',
+    'nigeria': 'NG',
+    'niue': 'NU',
+    'norfolk island': 'NF',
+    'north korea': 'KP',
+    'north macedonia': 'MK',
+    'northern mariana islands': 'MP',
+    'norway': 'NO',
+    'oman': 'OM',
+    'pakistan': 'PK',
+    'palau': 'PW',
+    'palestine': 'PS',
+    'panama': 'PA',
+    'papua new guinea': 'PG',
+    'paraguay': 'PY',
+    'pays bas': 'NL',
+    'peru': 'PE',
+    'philippines': 'PH',
+    'pitcairn': 'PN',
+    'poland': 'PL',
+    'portugal': 'PT',
+    'puerto rico': 'PR',
+    'qatar': 'QA',
+    'reunion': 'RE',
+    'romania': 'RO',
+    'royaume uni': 'GB',
+    'russia': 'RU',
+    'russian federation': 'RU',
+    'rwanda': 'RW',
+    'samoa american': 'AS',
+    'samoa western': 'WS',
+    'san marino': 'SM',
+    'sao tome principe': 'ST',
+    'saudi arabia': 'SA',
+    'senegal': 'SN',
+    'serbia': 'RS',
+    'seychelles': 'SC',
+    'sierra leone': 'SL',
+    'singapore': 'SG',
+    'slovakia': 'SK',
+    'slovenia': 'SI',
+    'solomon islands': 'SB',
+    'somalia': 'SO',
+    'south africa': 'ZA',
+    'south georgia the south sandwich islands': 'GS',
+    'south korea': 'KR',
+    'south sudan': 'SS',
+    'spain': 'ES',
+    'sri lanka': 'LK',
+    'st barthelemy': 'BL',
+    'st helena': 'SH',
+    'st kitts nevis': 'KN',
+    'st lucia': 'LC',
+    'st maarten dutch': 'SX',
+    'st martin french': 'MF',
+    'st pierre miquelon': 'PM',
+    'st vincent': 'VC',
+    'sudan': 'SD',
+    'suisse': 'CH',
+    'suriname': 'SR',
+    'svalbard jan mayen': 'SJ',
+    'sweden': 'SE',
+    'switzerland': 'CH',
+    'syria': 'SY',
+    'taiwan': 'TW',
+    'tajikistan': 'TJ',
+    'tanzania': 'TZ',
+    'thailand': 'TH',
+    'togo': 'TG',
+    'tokelau': 'TK',
+    'tonga': 'TO',
+    'trinidad tobago': 'TT',
+    'tunisia': 'TN',
+    'turkey': 'TR',
+    'turkiye': 'TR',
+    'turkmenistan': 'TM',
+    'turks caicos is': 'TC',
+    'tuvalu': 'TV',
+    'uganda': 'UG',
+    'ukraine': 'UA',
+    'united arab emirates': 'AE',
+    'united kingdom': 'GB',
+    'united states': 'US',
+    'united states of america': 'US',
+    'uruguay': 'UY',
+    'us minor outlying islands': 'UM',
+    'usa': 'US',
+    'uzbekistan': 'UZ',
+    'vanuatu': 'VU',
+    'vatican city': 'VA',
+    'venezuela': 'VE',
+    'viet nam': 'VN',
+    'vietnam': 'VN',
+    'virgin islands uk': 'VG',
+    'virgin islands us': 'VI',
+    'wallis futuna': 'WF',
+    'western sahara': 'EH',
+    'yemen': 'YE',
+    'zambia': 'ZM',
+    'zimbabwe': 'ZW',
+}
+COUNTRY_CODES = frozenset(COUNTRY_NAMES.values())
+
+
+def country_name_key(value):
+    value = unicodedata.normalize("NFKD", value).encode("ascii", "ignore").decode("ascii").casefold()
+    return re.sub(r"[^a-z0-9]+", " ", value).strip()
+
+
+def country_from_label(value):
+    """Recognize a complete country name on the last postal-address line."""
+    if not isinstance(value, str) or len(value) > 8192:
+        return ""
+    lines = [line.strip() for line in value.splitlines() if line.strip()]
+    if not lines:
+        return ""
+    name = country_name_key(lines[-1])
+    # Two-letter lines can be states (CA, LA); Georgia can be a US state.
+    if len(name) <= 2 or name == "georgia":
+        return ""
+    return COUNTRY_NAMES.get(name, "")
+
+
 def country_value(value, *, code_only=False):
     """Accept a declared postal country or registration code, ignoring placeholders."""
     if not isinstance(value, str):
@@ -523,7 +821,8 @@ def country_value(value, *, code_only=False):
     if not value or len(value) > 100 or any(ord(char) < 32 or 127 <= ord(char) < 160 for char in value):
         return ""
     if re.fullmatch(r"[A-Za-z]{2}", value):
-        return value.upper() if value.upper() not in {"ZZ", "XX", "EU", "AP"} else ""
+        code = "GB" if value.upper() == "UK" else value.upper()
+        return code if code in COUNTRY_CODES else ""
     if code_only:
         return ""
     value = " ".join(value.split())
@@ -532,7 +831,7 @@ def country_value(value, *, code_only=False):
             "notavailable", "notapplicable", "notpubliclydisclosed", "na", "none", "null",
             "private", "privacy", "withheld", "dataprotected", "true", "false"}:
         return ""
-    return value if any(char.isalpha() for char in value) else ""
+    return COUNTRY_NAMES.get(country_name_key(value), value) if any(char.isalpha() for char in value) else ""
 
 
 def owner_summary(responses):
@@ -604,7 +903,9 @@ def owner_summary(responses):
                     params = params if isinstance(params, dict) else {}
                     address = items(value)
                     cc = next((value for key, value in params.items() if isinstance(key, str) and key.casefold() == "cc"), None)
-                    country = country_value(cc, code_only=True) or country_value(address[6] if len(address) > 6 else "")
+                    country = (country_value(cc, code_only=True)
+                               or country_value(address[6] if len(address) > 6 else "")
+                               or country_from_label(params.get("label")))
                     add("countries", country)
                     add_country(country, "registrant_address", response.url, summary["country_details"])
             if not organizations and "org" in entity_kinds:

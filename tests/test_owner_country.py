@@ -8,7 +8,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from rdappy import Client, Formatter, Response, country_value, main, owner_summary
+from rdappy import Client, Formatter, Response, country_from_label, country_value, main, owner_summary
 
 
 class CountryTests(unittest.TestCase):
@@ -23,7 +23,7 @@ class CountryTests(unittest.TestCase):
                      "endAddress": "192.0.2.255", "country": "US"}, **fields)
 
     def test_country_value_accepts_declared_values_and_rejects_placeholders(self):
-        for value, expected in ((" fr ", "FR"), ("France", "France"), ("United  States", "United States"),
+        for value, expected in ((" fr ", "FR"), ("France", "FR"), ("United  States", "US"),
                                 ("NA", "NA"), ("N/A", ""), ("ZZ", ""), ("EU", ""),
                                 ("REDACTED FOR PRIVACY", ""), ("Not disclosed", ""), ("unknown", "")):
             with self.subTest(value=value):
@@ -66,7 +66,7 @@ class CountryTests(unittest.TestCase):
             with self.subTest(cc=cc):
                 data = {"objectClassName": "domain", "ldhName": "example.test", "entities": [self.contact("France", cc=cc)]}
                 summary = owner_summary([Response(data, "https://example.test/record")])
-                self.assertEqual(summary["countries"], ["France"])
+                self.assertEqual(summary["countries"], ["FR"])
                 self.assertEqual(summary["country_details"][0]["basis"], "registrant_address")
 
     def test_country_evidence_deduplicates_and_preserves_conflicts(self):
@@ -98,6 +98,24 @@ class CountryTests(unittest.TestCase):
             summary = json.loads(output.getvalue())
             self.assertEqual(summary["countries"], [])
             self.assertEqual(summary["country_details"], [{"country": "US", "basis": "network_registration", "source": path.resolve().as_uri()}])
+
+    def test_unstructured_postal_label_recognizes_country_names_without_state_guesses(self):
+        for label, expected in (("Street\nCity\nUnited States", "US"), ("Street\nCanada", "CA"),
+                                ("Street\nUnited Kingdom", "GB"), ("Street\nÉtats-Unis", "US"),
+                                ("Street\nCA", ""), ("Street\nGeorgia", ""), ("Street\nSpringfield", ""),
+                                ("Street\n94043", ""), (None, ""), ({"label": "France"}, "")):
+            with self.subTest(label=label):
+                self.assertEqual(country_from_label(label), expected)
+
+    def test_arin_style_postal_labels_supply_registrant_countries(self):
+        contact = self.contact()
+        contact["vcardArray"][1][1][1] = {"label": "Example Street\nExample City\nCA\n94043\nUnited States"}
+        summary = owner_summary([Response(self.network(country="CA", entities=[contact]), "https://example.test/record")])
+        self.assertEqual(summary["countries"], ["US"])
+        self.assertEqual(summary["country_details"], [{"country": "US", "basis": "registrant_address", "source": "https://example.test/record"}])
+        contact["vcardArray"][1][1][1]["cc"] = "DE"
+        summary = owner_summary([Response(self.network(entities=[contact]), "https://example.test/record")])
+        self.assertEqual(summary["countries"], ["DE"])
 
 
 if __name__ == "__main__":
