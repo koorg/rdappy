@@ -6,7 +6,7 @@ on:
       version:
         description: Version présente dans la révision française sélectionnée
         required: true
-        default: "1.1.1"
+        default: "1.1.2"
       release_tag:
         description: Tag facultatif de la release FR dont le paquet Debian doit être installé et vérifié
         required: false
@@ -110,7 +110,7 @@ jobs:
         run: |
           docker run --rm --network none "$IMAGE:$CONTAINER_VERSION" --version
           docker run --rm --network none "$IMAGE:$CONTAINER_VERSION" --help
-          docker run --rm --network none --mount "type=bind,source=$GITHUB_WORKSPACE/tests,target=/checks,readonly" --entrypoint /usr/local/bin/python3 "$IMAGE:$CONTAINER_VERSION" -B -c 'import shutil, sys, unittest; shutil.copyfile("/checks/test_rdappy.py", "/tmp/test_rdappy.py"); sys.path.insert(0, "/opt/rdappy"); result = unittest.TextTestRunner(verbosity=2).run(unittest.defaultTestLoader.discover("/tmp", pattern="test_rdappy.py")); sys.exit(not result.wasSuccessful())'
+          docker run --rm --network none --mount "type=bind,source=$GITHUB_WORKSPACE/tests,target=/checks,readonly" --entrypoint /usr/local/bin/python3 "$IMAGE:$CONTAINER_VERSION" -B -c 'import shutil, sys, unittest; shutil.copytree("/checks", "/tmp/rdappy-tests", ignore=shutil.ignore_patterns("test_packaging.py", "__pycache__")); sys.path.insert(0, "/opt/rdappy"); result = unittest.TextTestRunner(verbosity=2).run(unittest.defaultTestLoader.discover("/tmp/rdappy-tests", pattern="test_*.py")); sys.exit(not result.wasSuccessful())'
           docker run --rm --network none --entrypoint /usr/local/bin/python3 "$IMAGE:$CONTAINER_VERSION" -B -c 'import sys; sys.path.insert(0, "/opt/rdappy"); import rdappy; from pathlib import Path; assert Path("/usr/share/licenses/rdappy/LICENSE").read_text().strip() in rdappy.ARTISTIC_LICENSE; assert Path("/usr/share/licenses/rdappy/BSD-2-Clause.txt").read_text().strip() == rdappy.BSD_2_CLAUSE_LICENSE.strip()'
           docker image inspect "$IMAGE:$CONTAINER_VERSION" > "$RUNNER_TEMP/rdappy-image.json"
           python3 -B tools/audit_distribution.py "$RUNNER_TEMP/rdappy-image.json"
@@ -130,14 +130,14 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           printf '%s' "$GH_TOKEN" | docker login ghcr.io --username koorg --password-stdin
-          docker buildx imagetools inspect "$IMAGE:1.1.1" --raw > "$RUNNER_TEMP/rdappy-english-version-before.json"
+          docker buildx imagetools inspect "$IMAGE:$RDAPPY_VERSION" --raw > "$RUNNER_TEMP/rdappy-english-version-before.json"
           docker buildx imagetools inspect "$IMAGE:latest" --raw > "$RUNNER_TEMP/rdappy-english-latest-before.json"
           docker push "$IMAGE:$CONTAINER_VERSION"
           docker push "$IMAGE:fr"
           docker buildx imagetools create --annotation "index:org.opencontainers.image.source=https://github.com/koorg/rdappy" --annotation "index:org.opencontainers.image.authors=koorg" --annotation "index:org.opencontainers.image.licenses=Artistic-1.0-Perl AND BSD-2-Clause" --annotation "index:org.opencontainers.image.description=Client RDAP en français, en un seul fichier Python" --tag "$IMAGE:$CONTAINER_VERSION" --tag "$IMAGE:fr" "$IMAGE:$CONTAINER_VERSION"
           docker buildx imagetools inspect "$IMAGE:$CONTAINER_VERSION" --raw > "$RUNNER_TEMP/rdappy-image-index.json"
           python3 -B tools/audit_distribution.py "$RUNNER_TEMP/rdappy-image-index.json"
-          docker buildx imagetools inspect "$IMAGE:1.1.1" --raw > "$RUNNER_TEMP/rdappy-english-version-after.json"
+          docker buildx imagetools inspect "$IMAGE:$RDAPPY_VERSION" --raw > "$RUNNER_TEMP/rdappy-english-version-after.json"
           docker buildx imagetools inspect "$IMAGE:latest" --raw > "$RUNNER_TEMP/rdappy-english-latest-after.json"
           python3 -B - <<'PY'
           import os

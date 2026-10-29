@@ -447,6 +447,15 @@ class Tests(unittest.TestCase):
         self.assertEqual(error.exception.code, 2)
         self.assertEqual(requests, [])
 
+    def test_owner_country_labels_identify_the_basis_and_missing_data(self):
+        contact = owner_summary([Response(domain, base)])
+        self.assertIn("Pays (titulaire): FR", Formatter().render_owner(contact))
+        for data, label in (({"objectClassName": "ip network", "country": "US"}, "Pays (enregistrement du réseau): US"),
+                            ({"objectClassName": "autnum", "country": "GB"}, "Pays (enregistrement ASN): GB")):
+            self.assertIn(label, Formatter().render_owner(owner_summary([Response(data, base)])))
+        missing = owner_summary([Response(dict(domain, entities=[]), base)])
+        self.assertIn("Pays: Non communiqué ou non fourni", Formatter().render_owner(missing))
+
     def test_search_deduplicates_services_and_results(self):
         with patch.object(self.client, "services", return_value=[(["a"], [base + "registry/"]), (["b"], [base + "registry/"])]):
             self.assertEqual(len(self.client.search("exampl*")), 1)
@@ -507,7 +516,7 @@ class Tests(unittest.TestCase):
         output = Formatter().render_owner(summary)
         for value in ("Domaine: example.test", "Organisation: Example Company", "Titulaire: Alice", "Courriel: owner@example.test"):
             self.assertIn(value, output)
-        self.assertEqual(set(summary), {"object_type", "object", "organizations", "registrants", "countries", "emails", "sources"})
+        self.assertEqual(set(summary), {"object_type", "object", "organizations", "registrants", "countries", "emails", "sources", "country_details"})
         self.assertEqual(summary["organizations"], ["Example Company"])
 
     def test_command_exits_cleanly_when_output_pipe_closes(self):

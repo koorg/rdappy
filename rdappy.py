@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: Artistic-1.0-Perl AND BSD-2-Clause
-# Édition française 1.1.1 ; portage et adaptations documentés dans NOTICE.
+# Édition française 1.1.2 ; portage et adaptations documentés dans NOTICE.
 """rdappy: a standalone Registration Data Access Protocol (RDAP) client.
 
 Python 3.10 or later. No runtime dependencies.
@@ -30,12 +30,13 @@ import sys
 import tempfile
 import textwrap
 import time
+import unicodedata
 from dataclasses import dataclass
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote, unquote, urlencode, urljoin, urlsplit, urlunsplit
 from urllib.request import HTTPRedirectHandler, HTTPSHandler, Request, build_opener
 
-VERSION = "1.1.1"
+VERSION = "1.1.2"
 IANA = "https://data.iana.org/rdap/"
 MAX_BYTES = 16 * 1024 * 1024
 SEARCH_KEYS = ("domainSearchResults", "nameserverSearchResults", "entitySearchResults", "domainSearchResult", "nameserverSearchResult", "entitySearchResult")
@@ -515,14 +516,332 @@ class Client:
         return responses
 
 
+# Country-name data: IANA tzdb iso3166.tab (public domain).
+# https://data.iana.org/time-zones/tzdb/iso3166.tab
+# SHA256: 837c80785080c8433fd9d4ea87e78f161ac7a40389301c5153d4f90198baeb2a
+COUNTRY_NAMES = {
+    'afghanistan': 'AF',
+    'aland islands': 'AX',
+    'albania': 'AL',
+    'algeria': 'DZ',
+    'allemagne': 'DE',
+    'andorra': 'AD',
+    'angola': 'AO',
+    'anguilla': 'AI',
+    'antarctica': 'AQ',
+    'antigua barbuda': 'AG',
+    'argentina': 'AR',
+    'armenia': 'AM',
+    'aruba': 'AW',
+    'australia': 'AU',
+    'austria': 'AT',
+    'azerbaijan': 'AZ',
+    'bahamas': 'BS',
+    'bahrain': 'BH',
+    'bangladesh': 'BD',
+    'barbados': 'BB',
+    'belarus': 'BY',
+    'belgique': 'BE',
+    'belgium': 'BE',
+    'belize': 'BZ',
+    'benin': 'BJ',
+    'bermuda': 'BM',
+    'bhutan': 'BT',
+    'bolivia': 'BO',
+    'bosnia herzegovina': 'BA',
+    'botswana': 'BW',
+    'bouvet island': 'BV',
+    'brazil': 'BR',
+    'britain uk': 'GB',
+    'british indian ocean territory': 'IO',
+    'brunei': 'BN',
+    'bulgaria': 'BG',
+    'burkina faso': 'BF',
+    'burundi': 'BI',
+    'cambodia': 'KH',
+    'cameroon': 'CM',
+    'canada': 'CA',
+    'cape verde': 'CV',
+    'caribbean nl': 'BQ',
+    'cayman islands': 'KY',
+    'central african rep': 'CF',
+    'chad': 'TD',
+    'chile': 'CL',
+    'china': 'CN',
+    'chine': 'CN',
+    'christmas island': 'CX',
+    'cocos keeling islands': 'CC',
+    'colombia': 'CO',
+    'comoros': 'KM',
+    'congo dem rep': 'CD',
+    'congo rep': 'CG',
+    'cook islands': 'CK',
+    'costa rica': 'CR',
+    'cote divoire': 'CI',
+    'croatia': 'HR',
+    'cuba': 'CU',
+    'curacao': 'CW',
+    'cyprus': 'CY',
+    'czech republic': 'CZ',
+    'czechia': 'CZ',
+    'denmark': 'DK',
+    'djibouti': 'DJ',
+    'dominica': 'DM',
+    'dominican republic': 'DO',
+    'east timor': 'TL',
+    'ecuador': 'EC',
+    'egypt': 'EG',
+    'el salvador': 'SV',
+    'equatorial guinea': 'GQ',
+    'eritrea': 'ER',
+    'espagne': 'ES',
+    'estonia': 'EE',
+    'eswatini swaziland': 'SZ',
+    'etats unis': 'US',
+    'etats unis d amerique': 'US',
+    'ethiopia': 'ET',
+    'falkland islands': 'FK',
+    'faroe islands': 'FO',
+    'fiji': 'FJ',
+    'finland': 'FI',
+    'france': 'FR',
+    'french guiana': 'GF',
+    'french polynesia': 'PF',
+    'french s terr': 'TF',
+    'gabon': 'GA',
+    'gambia': 'GM',
+    'georgia': 'GE',
+    'germany': 'DE',
+    'ghana': 'GH',
+    'gibraltar': 'GI',
+    'great britain': 'GB',
+    'greece': 'GR',
+    'greenland': 'GL',
+    'grenada': 'GD',
+    'guadeloupe': 'GP',
+    'guam': 'GU',
+    'guatemala': 'GT',
+    'guernsey': 'GG',
+    'guinea': 'GN',
+    'guinea bissau': 'GW',
+    'guyana': 'GY',
+    'haiti': 'HT',
+    'heard island mcdonald islands': 'HM',
+    'honduras': 'HN',
+    'hong kong': 'HK',
+    'hungary': 'HU',
+    'iceland': 'IS',
+    'india': 'IN',
+    'indonesia': 'ID',
+    'iran': 'IR',
+    'iraq': 'IQ',
+    'ireland': 'IE',
+    'isle of man': 'IM',
+    'israel': 'IL',
+    'italie': 'IT',
+    'italy': 'IT',
+    'jamaica': 'JM',
+    'japan': 'JP',
+    'japon': 'JP',
+    'jersey': 'JE',
+    'jordan': 'JO',
+    'kazakhstan': 'KZ',
+    'kenya': 'KE',
+    'kiribati': 'KI',
+    'korea north': 'KP',
+    'korea south': 'KR',
+    'kuwait': 'KW',
+    'kyrgyzstan': 'KG',
+    'laos': 'LA',
+    'latvia': 'LV',
+    'lebanon': 'LB',
+    'lesotho': 'LS',
+    'liberia': 'LR',
+    'libya': 'LY',
+    'liechtenstein': 'LI',
+    'lithuania': 'LT',
+    'luxembourg': 'LU',
+    'macau': 'MO',
+    'madagascar': 'MG',
+    'malawi': 'MW',
+    'malaysia': 'MY',
+    'maldives': 'MV',
+    'mali': 'ML',
+    'malta': 'MT',
+    'marshall islands': 'MH',
+    'martinique': 'MQ',
+    'mauritania': 'MR',
+    'mauritius': 'MU',
+    'mayotte': 'YT',
+    'mexico': 'MX',
+    'micronesia': 'FM',
+    'moldova': 'MD',
+    'monaco': 'MC',
+    'mongolia': 'MN',
+    'montenegro': 'ME',
+    'montserrat': 'MS',
+    'morocco': 'MA',
+    'mozambique': 'MZ',
+    'myanmar burma': 'MM',
+    'namibia': 'NA',
+    'nauru': 'NR',
+    'nepal': 'NP',
+    'netherlands': 'NL',
+    'new caledonia': 'NC',
+    'new zealand': 'NZ',
+    'nicaragua': 'NI',
+    'niger': 'NE',
+    'nigeria': 'NG',
+    'niue': 'NU',
+    'norfolk island': 'NF',
+    'north korea': 'KP',
+    'north macedonia': 'MK',
+    'northern mariana islands': 'MP',
+    'norway': 'NO',
+    'oman': 'OM',
+    'pakistan': 'PK',
+    'palau': 'PW',
+    'palestine': 'PS',
+    'panama': 'PA',
+    'papua new guinea': 'PG',
+    'paraguay': 'PY',
+    'pays bas': 'NL',
+    'peru': 'PE',
+    'philippines': 'PH',
+    'pitcairn': 'PN',
+    'poland': 'PL',
+    'portugal': 'PT',
+    'puerto rico': 'PR',
+    'qatar': 'QA',
+    'reunion': 'RE',
+    'romania': 'RO',
+    'royaume uni': 'GB',
+    'russia': 'RU',
+    'russian federation': 'RU',
+    'rwanda': 'RW',
+    'samoa american': 'AS',
+    'samoa western': 'WS',
+    'san marino': 'SM',
+    'sao tome principe': 'ST',
+    'saudi arabia': 'SA',
+    'senegal': 'SN',
+    'serbia': 'RS',
+    'seychelles': 'SC',
+    'sierra leone': 'SL',
+    'singapore': 'SG',
+    'slovakia': 'SK',
+    'slovenia': 'SI',
+    'solomon islands': 'SB',
+    'somalia': 'SO',
+    'south africa': 'ZA',
+    'south georgia the south sandwich islands': 'GS',
+    'south korea': 'KR',
+    'south sudan': 'SS',
+    'spain': 'ES',
+    'sri lanka': 'LK',
+    'st barthelemy': 'BL',
+    'st helena': 'SH',
+    'st kitts nevis': 'KN',
+    'st lucia': 'LC',
+    'st maarten dutch': 'SX',
+    'st martin french': 'MF',
+    'st pierre miquelon': 'PM',
+    'st vincent': 'VC',
+    'sudan': 'SD',
+    'suisse': 'CH',
+    'suriname': 'SR',
+    'svalbard jan mayen': 'SJ',
+    'sweden': 'SE',
+    'switzerland': 'CH',
+    'syria': 'SY',
+    'taiwan': 'TW',
+    'tajikistan': 'TJ',
+    'tanzania': 'TZ',
+    'thailand': 'TH',
+    'togo': 'TG',
+    'tokelau': 'TK',
+    'tonga': 'TO',
+    'trinidad tobago': 'TT',
+    'tunisia': 'TN',
+    'turkey': 'TR',
+    'turkiye': 'TR',
+    'turkmenistan': 'TM',
+    'turks caicos is': 'TC',
+    'tuvalu': 'TV',
+    'uganda': 'UG',
+    'ukraine': 'UA',
+    'united arab emirates': 'AE',
+    'united kingdom': 'GB',
+    'united states': 'US',
+    'united states of america': 'US',
+    'uruguay': 'UY',
+    'us minor outlying islands': 'UM',
+    'usa': 'US',
+    'uzbekistan': 'UZ',
+    'vanuatu': 'VU',
+    'vatican city': 'VA',
+    'venezuela': 'VE',
+    'viet nam': 'VN',
+    'vietnam': 'VN',
+    'virgin islands uk': 'VG',
+    'virgin islands us': 'VI',
+    'wallis futuna': 'WF',
+    'western sahara': 'EH',
+    'yemen': 'YE',
+    'zambia': 'ZM',
+    'zimbabwe': 'ZW',
+}
+COUNTRY_CODES = frozenset(COUNTRY_NAMES.values())
+
+
+def country_name_key(value):
+    value = unicodedata.normalize("NFKD", value).encode("ascii", "ignore").decode("ascii").casefold()
+    return re.sub(r"[^a-z0-9]+", " ", value).strip()
+
+
+def country_from_label(value):
+    """Recognize a complete country name on the last postal-address line."""
+    if not isinstance(value, str) or len(value) > 8192:
+        return ""
+    lines = [line.strip() for line in value.splitlines() if line.strip()]
+    if not lines:
+        return ""
+    name = country_name_key(lines[-1])
+    # Two-letter lines can be states (CA, LA); Georgia can be a US state.
+    if len(name) <= 2 or name == "georgia":
+        return ""
+    return COUNTRY_NAMES.get(name, "")
+
+
+def country_value(value, *, code_only=False):
+    """Accept a declared postal country or registration code, ignoring placeholders."""
+    if not isinstance(value, str):
+        return ""
+    value = value.strip()
+    if not value or len(value) > 100 or any(ord(char) < 32 or 127 <= ord(char) < 160 for char in value):
+        return ""
+    if re.fullmatch(r"[A-Za-z]{2}", value):
+        code = "GB" if value.upper() == "UK" else value.upper()
+        return code if code in COUNTRY_CODES else ""
+    if code_only:
+        return ""
+    value = " ".join(value.split())
+    marker = re.sub(r"[\W_]+", "", value.casefold())
+    if "redact" in marker or marker in {"unknown", "undisclosed", "notdisclosed", "notprovided",
+            "notavailable", "notapplicable", "notpubliclydisclosed", "na", "none", "null",
+            "private", "privacy", "withheld", "dataprotected", "true", "false"}:
+        return ""
+    return COUNTRY_NAMES.get(country_name_key(value), value) if any(char.isalpha() for char in value) else ""
+
+
 def owner_summary(responses):
     """Collect public registrant data without substituting other contact roles."""
     if not responses:
-        raise RdapError('Aucune réponse RDAP n’est disponible pour résumer le titulaire.')
+        raise RdapError("Aucune réponse RDAP n’est disponible pour résumer le titulaire.")
     first = responses[0].data
     kind = first.get("objectClassName")
     if kind not in ("domain", "ip network", "autnum"):
-        raise RdapError('Le résumé du titulaire nécessite un domaine, un réseau IP ou un système autonome.')
+        raise RdapError("Le résumé du titulaire nécessite un domaine, un réseau IP ou un système autonome.")
     name = text(first.get("ldhName") or first.get("unicodeName"))
     identifier = text(first.get("unicodeName") or first.get("ldhName") or first.get("handle") or first.get("name"))
     if kind == "ip network" and first.get("startAddress") and first.get("endAddress"):
@@ -531,8 +850,15 @@ def owner_summary(responses):
         start, end = first["startAutnum"], first.get("endAutnum", first["startAutnum"])
         identifier = f"AS{start}" if start == end else f"AS{start} - AS{end}"
     summary = {"object_type": kind, "object": identifier, "organizations": [],
-               "registrants": [], "emails": [], "countries": [], "sources": []}
+               "registrants": [], "emails": [], "countries": [], "sources": [], "country_details": []}
     seen = {field: set() for field, value in summary.items() if isinstance(value, list)}
+    registration_countries, country_seen = [], set()
+
+    def add_country(country, basis, source, target):
+        key = (country.casefold(), basis, source)
+        if country and key not in country_seen:
+            country_seen.add(key)
+            target.append({"country": country, "basis": basis, "source": source})
 
     def add(field, value):
         value = text(value).strip()
@@ -543,11 +869,15 @@ def owner_summary(responses):
     for response in responses:
         data = response.data
         if data.get("objectClassName") != kind:
-            raise RdapError('Impossible de combiner des types d’objets RDAP différents dans un résumé du titulaire.')
+            raise RdapError("Impossible de combiner des types d’objets RDAP différents dans un résumé du titulaire.")
         candidate = text(data.get("ldhName") or data.get("unicodeName"))
         if kind == "domain" and name and candidate and name.rstrip(".").casefold() != candidate.rstrip(".").casefold():
-            raise RdapError('Les réponses du registre et du registrar concernent des noms de domaine différents.')
+            raise RdapError("Les réponses du registre et du registrar concernent des noms de domaine différents.")
         add("sources", response.url)
+        if kind in ("ip network", "autnum"):
+            country = country_value(data.get("country"), code_only=True)
+            basis = "network_registration" if kind == "ip network" else "autnum_registration"
+            add_country(country, basis, response.url, registration_countries)
         # Entity roles apply to the immediate parent. A registrar's nested
         # registrant is not necessarily the domain's registrant.
         for entity in objects(data.get("entities")):
@@ -572,8 +902,12 @@ def owner_summary(responses):
                 elif key == "adr":
                     params = params if isinstance(params, dict) else {}
                     address = items(value)
-                    country = params.get("cc") or (address[6] if len(address) > 6 else "")
+                    cc = next((value for key, value in params.items() if isinstance(key, str) and key.casefold() == "cc"), None)
+                    country = (country_value(cc, code_only=True)
+                               or country_value(address[6] if len(address) > 6 else "")
+                               or country_from_label(params.get("label")))
                     add("countries", country)
+                    add_country(country, "registrant_address", response.url, summary["country_details"])
             if not organizations and "org" in entity_kinds:
                 organizations = names
             for organization in organizations:
@@ -581,6 +915,8 @@ def owner_summary(responses):
             for contact_name in names:
                 if contact_name.casefold() not in [organization.casefold() for organization in organizations]:
                     add("registrants", contact_name)
+    if not summary["country_details"]:
+        summary["country_details"] = registration_countries
     return summary
 
 
@@ -596,6 +932,9 @@ FRENCH = {
     'Handle': 'Identifiant',
     'Type': 'Type',
     'Country': 'Pays',
+    'Country (registrant)': 'Pays (titulaire)',
+    'Country (network registration)': 'Pays (enregistrement du réseau)',
+    'Country (ASN registration)': 'Pays (enregistrement ASN)',
     'Range': 'Plage',
     'Parent': 'Parent',
     'IP Address': 'Adresse IP',
@@ -844,10 +1183,25 @@ class Formatter:
         self.lines = []
         label = {"domain": "Domain", "ip network": "Network", "autnum": "Autonomous System"}[summary["object_type"]]
         self.kv(label, summary["object"])
-        self.kv("Organization", summary["organizations"] or 'Non divulguée ou non fournie')
-        for field, label in (("registrants", "Registrant"), ("countries", "Country"), ("emails", "Email")):
+        self.kv("Organization", summary["organizations"] or "Non divulguée ou non fournie")
+        for field, label in (("registrants", "Registrant"), ("emails", "Email")):
             if summary[field]:
                 self.kv(label, summary[field])
+        details = summary.get("country_details") or []
+        if details:
+            labels = {"registrant_address": "Country (registrant)", "network_registration": "Country (network registration)",
+                      "autnum_registration": "Country (ASN registration)"}
+            countries = {}
+            for detail in details:
+                values = countries.setdefault(detail["basis"], [])
+                if detail["country"].casefold() not in [value.casefold() for value in values]:
+                    values.append(detail["country"])
+            for basis, values in countries.items():
+                self.kv(labels.get(basis, "Country"), ", ".join(values))
+        elif summary.get("countries"):
+            self.kv("Country (registrant)", summary["countries"])
+        else:
+            self.kv("Country", "Non communiqué ou non fourni")
         return "\n".join(self.lines)
 
 

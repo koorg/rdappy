@@ -6,14 +6,14 @@ Il interroge les données d’enregistrement des domaines, des adresses et rése
 
 **Python 3.10 ou ultérieur · Windows, Linux et macOS · Artistic-1.0-Perl AND BSD-2-Clause**
 
-La branche `fr` fournit l’édition française 1.1.1 avec les mêmes fonctions que l’édition anglaise de [`main`](https://github.com/koorg/rdappy/tree/main). L’aide, les libellés et les diagnostics restent en français, indépendamment de la langue du système. Les valeurs reçues des serveurs sont conservées telles quelles.
+La branche `fr` fournit l’édition française 1.1.2 avec les mêmes fonctions que l’édition anglaise de [`main`](https://github.com/koorg/rdappy/tree/main). L’aide, les libellés et les diagnostics restent en français, indépendamment de la langue du système. Les valeurs reçues des serveurs sont conservées telles quelles.
 
 ## Installation
 
-La [release française 1.1.1](https://github.com/koorg/rdappy/releases/tag/fr-v1.1.1) propose un wheel universel et un paquet Debian. Après téléchargement du wheel :
+La [release française 1.1.2](https://github.com/koorg/rdappy/releases/tag/fr-v1.1.2) propose un wheel universel et un paquet Debian. Après téléchargement du wheel :
 
 ```console
-python -m pip install --user --force-reinstall --no-deps rdappy-1.1.1-py3-none-any.whl
+python -m pip install --user --force-reinstall --no-deps rdappy-1.1.2-py3-none-any.whl
 rdappy --version
 rdappy --owner example.com
 ```
@@ -25,7 +25,7 @@ Les deux éditions utilisent le même nom de paquet et la même commande. `--for
 Avec une installation existante de `pipx` :
 
 ```console
-pipx install ./rdappy-1.1.1-py3-none-any.whl
+pipx install ./rdappy-1.1.2-py3-none-any.whl
 ```
 
 Depuis les sources :
@@ -47,7 +47,7 @@ python rdappy.py --owner example.com
 Télécharger le `.deb` de la release française, puis l’installer :
 
 ```console
-sudo apt install --reinstall ./rdappy_1.1.1_all.deb
+sudo apt install --reinstall ./rdappy_1.1.2_all.deb
 rdappy --owner example.com
 ```
 
@@ -55,31 +55,31 @@ Le paquet fournit `/usr/bin/rdappy` et requiert Python 3.10 ou ultérieur. Il ne
 
 ### GitHub Packages
 
-Le conteneur Linux amd64 français utilise les tags `1.1.1-fr` et `fr` dans [GitHub Packages](https://github.com/users/koorg/packages/container/package/rdappy) :
+Le conteneur Linux amd64 français utilise les tags `1.1.2-fr` et `fr` dans [GitHub Packages](https://github.com/users/koorg/packages/container/package/rdappy) :
 
 ```console
-docker run --rm ghcr.io/koorg/rdappy:1.1.1-fr --owner example.com
+docker run --rm ghcr.io/koorg/rdappy:1.1.2-fr --owner example.com
 docker run --rm ghcr.io/koorg/rdappy:fr --license
 ```
 
-Il fonctionne avec un utilisateur numérique sans privilèges. Un paquet privé peut nécessiter `docker login ghcr.io`. Les fichiers wheel et Debian sont joints aux releases ; la rubrique Packages contient le conteneur. Les tags `1.1.1` et `latest` identifient l’édition anglaise.
+Il fonctionne avec un utilisateur numérique sans privilèges. Un paquet privé peut nécessiter `docker login ghcr.io`. Les fichiers wheel et Debian sont joints aux releases ; la rubrique Packages contient le conteneur. Les tags `1.1.2` et `latest` identifient l’édition anglaise.
 
 ## Utilisation
 
 ```console
 rdappy example.com
 rdappy --owner example.com
-rdappy --owner 1.1.1.1
+rdappy --owner 1.1.2.1
 rdappy --registry --short example.com
 rdappy --both --raw rdap.org
-rdappy 1.1.1.1
+rdappy 1.1.2.1
 rdappy 2606:4700:4700::1111
 rdappy 192.0.2.0/24
 rdappy AS13335
 rdappy --tld fr
 rdappy --entity ADMIN2521-ARIN
 rdappy --nameserver a.root-servers.net
-rdappy --reverse 1.1.1.1
+rdappy --reverse 1.1.2.1
 rdappy --search nic.fr
 rdappy --search "exampl*.com"
 rdappy https://rdap.org/domain/example.com
@@ -123,7 +123,7 @@ Une réponse `404` signifie que le service interrogé n’a pas trouvé l’obje
 
 ```console
 rdappy --owner example.com
-rdappy --owner 1.1.1.1
+rdappy --owner 1.1.2.1
 rdappy --owner AS13335
 rdappy --owner --raw example.com
 rdappy --owner --registry example.com
@@ -134,9 +134,25 @@ rdappy --owner --file response.json
 
 Seules les entités portant directement le rôle `registrant` sur l’objet interrogé sont utilisées. Les contacts du registrar, techniques, administratifs ou d’abus sont exclus, ainsi que les titulaires imbriqués sous un contact tiers. Le nom d’un réseau n’est jamais assimilé à une organisation. Le nom formaté d’un contact sert d’organisation uniquement si sa jCard indique explicitement `kind=org`.
 
-Pour les domaines, les deux sources sont combinées et les doublons supprimés. `--registry` et `--registrar` sélectionnent une seule source. `--owner --raw` conserve les clés JSON `object_type`, `object`, `organizations`, `registrants`, `emails`, `countries` et `sources`, identiques à celles de l’édition anglaise. Sans `--owner`, `--raw` fournit la réponse RDAP complète.
+Pour les domaines, les deux sources sont combinées et les doublons supprimés. `--registry` et `--registrar` sélectionnent une seule source. `--owner --raw` conserve les clés JSON `object_type`, `object`, `organizations`, `registrants`, `emails`, `countries`, `sources` et `country_details`, identiques à celles de l’édition anglaise. Sans `--owner`, `--raw` fournit la réponse RDAP complète.
 
 Le résumé prend en charge les réseaux IP, les ASN et les fichiers JSON locaux. Il est incompatible avec `--search`. Le pays provient de l’adresse du contact titulaire et ne constitue pas une géolocalisation IP. Le titulaire d’un réseau peut être un opérateur ou un hébergeur ; celui d’un domaine peut être un service de confidentialité. Les données non publiées ne peuvent pas être déduites de ce résumé.
+
+### Indication de pays
+
+Le libellé indique la nature du pays affiché :
+
+- `Pays (titulaire)` : pays de l’adresse du contact titulaire direct. Le paramètre `cc` prime sur le champ pays structuré, puis sur un nom de pays reconnu à la dernière ligne d’une adresse postale libre.
+- `Pays (enregistrement du réseau)` ou `Pays (enregistrement ASN)` : champ `country` de la fiche RDAP, utilisé seulement si aucune adresse du titulaire ne fournit de pays exploitable.
+- `Pays: Non communiqué ou non fourni` : absence de pays public utilisable. Les pays publiés en désaccord sont conservés.
+
+Les noms de pays sont reconnus grâce à la liste IANA intégrée au programme, dans le domaine public, et à des alias usuels. Les noms reconnus et les codes sont normalisés en codes à deux lettres. Une ligne isolée `CA`, `LA` ou `Georgia` dans une adresse libre reste ambiguë avec une région administrative et n’est pas utilisée pour déduire un pays.
+
+Il s’agit de données administratives d’enregistrement, pas d’une géolocalisation physique de l’IP. Le suffixe d’un domaine, l’adresse du registrar ou la localisation de l’hébergement ne servent pas à déduire le pays du titulaire. Aucun service supplémentaire ni base externe n’est interrogé.
+
+Dans `--owner --raw`, `countries` reste limité aux pays des adresses du titulaire. Le nouveau tableau `country_details` contient les indications retenues avec `country`, `basis` (`registrant_address`, `network_registration` ou `autnum_registration`) et `source` (URL RDAP ou URI du fichier local). Les preuves répétées sont dédoublonnées.
+
+Ces champs suivent [les données d’enregistrement RDAP](https://www.rfc-editor.org/rfc/rfc9083.html#section-5.4) et [le paramètre pays de vCard](https://www.rfc-editor.org/rfc/rfc8605.html#section-3.1).
 
 ## Configuration
 
@@ -178,9 +194,9 @@ python -B tools/build.py
 Le dossier `dist/` contient :
 
 ```text
-rdappy-1.1.1-py3-none-any.whl
-rdappy-1.1.1.tar.gz
-rdappy_1.1.1_all.deb
+rdappy-1.1.2-py3-none-any.whl
+rdappy-1.1.2.tar.gz
+rdappy_1.1.2_all.deb
 rdappy.py
 SHA256SUMS
 ```
@@ -196,7 +212,7 @@ python -B tools/build.py --deb-only
 Les métadonnées d’auteur et de maintenance utilisent le pseudo GitHub `koorg`. Auditer les sources, l’historique Git et les archives explicitement nommées, sans afficher les identifiants du poste :
 
 ```console
-python -B tools/audit_distribution.py --history --github-profile dist/rdappy-1.1.1-py3-none-any.whl dist/rdappy-1.1.1.tar.gz dist/rdappy_1.1.1_all.deb
+python -B tools/audit_distribution.py --history --github-profile dist/rdappy-1.1.2-py3-none-any.whl dist/rdappy-1.1.2.tar.gz dist/rdappy_1.1.2_all.deb
 ```
 
 Omettre `--github-profile` pour un audit entièrement hors ligne. Les identifiants du poste local restent vérifiés. Le contexte de construction du conteneur se limite au programme et aux fichiers de licence.

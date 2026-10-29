@@ -1,4 +1,4 @@
-rdappy 1.1.1 — édition française
+rdappy 1.1.2 — édition française
 Copyright (c) 2026 koorg.
 
 rdappy est une implémentation Python des fonctions de App::rdapper 1.26.
@@ -37,3 +37,9 @@ Les noms des titulaires des droits ne constituent pas une approbation.
 
 La branche main fournit l’édition anglaise principale. La branche fr
 fournit l’édition française : https://github.com/koorg/rdappy/tree/fr.
+
+La version 1.1.2 ajoute les pays et leur provenance explicite, sans nouvelle
+dépendance à l’exécution. Les noms de pays proviennent de la table IANA tzdb
+iso3166.tab, dans le domaine public, complétée par des alias usuels.
+Source : https://data.iana.org/time-zones/tzdb/iso3166.tab
+Empreinte SHA256 des données : 837c80785080c8433fd9d4ea87e78f161ac7a40389301c5153d4f90198baeb2a

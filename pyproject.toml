@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "rdappy"
-version = "1.1.1"
+version = "1.1.2"
 description = "Client RDAP en français, en un seul fichier Python et sans dépendance à l’exécution."
 readme = "README.md"
 requires-python = ">=3.10"

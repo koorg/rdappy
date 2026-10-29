@@ -1,5 +1,13 @@
 # Historique des versions
 
+## 1.1.2 — 29 octobre 2026
+
+- Indication de pays avec origine explicite dans `--owner` : adresse du titulaire, puis enregistrement du réseau IP ou de l’ASN si nécessaire.
+- Reconnaissance des noms de pays dans les adresses postales libres, dont le format ARIN, avec la liste IANA intégrée dans le domaine public.
+- Codes normalisés, valeurs masquées ignorées, conflits conservés et absence de données signalée explicitement.
+- Nouveau tableau JSON `country_details` avec pays, origine et URL source ; `countries` reste limité au titulaire.
+- Extension des tests hors ligne et exécution de tous les tests applicatifs dans le conteneur.
+
 ## 1.1.1 — 29 octobre 2026
 
 - Synchronisation de `fr` avec toutes les fonctions de `main` 1.1.1.
