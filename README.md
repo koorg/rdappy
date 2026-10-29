@@ -53,7 +53,7 @@ The package installs `/usr/bin/rdappy` and requires the distribution's Python 3.
 
 ### GitHub Packages
 
-An executable Linux amd64 container is published in [GitHub Packages](https://github.com/koorg/rdappy/pkgs/container/rdappy):
+An executable Linux amd64 container is published in [GitHub Packages](https://github.com/users/koorg/packages/container/package/rdappy):
 
 ```console
 docker run --rm ghcr.io/koorg/rdappy:1.1.1 --owner example.com
