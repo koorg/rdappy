@@ -20,6 +20,11 @@ The Python implementation, packaging and documentation were prepared on
 a single application module, a console entry point, optional disk caching,
 offline JSON input, and valid JSON arrays for combined registry/registrar output.
 
-Distributed under the Perl Artistic License 1.0 (Artistic-1.0-Perl).
-The complete license is provided in LICENSE and embedded in rdappy.py.
+The application is distributed under the Perl Artistic License 1.0
+(Artistic-1.0-Perl). Adaptations based on Net::RDAP retain its BSD-2-Clause
+conditions and disclaimer. The distribution license expression is
+Artistic-1.0-Perl AND BSD-2-Clause.
+Both full texts are provided in LICENSE and LICENSES/BSD-2-Clause.txt and
+embedded in rdappy.py. Run rdappy --license to display them.
+The complete BSD-2-Clause notice was added on 2026-10-29.
 The names of the original copyright holders do not imply endorsement.

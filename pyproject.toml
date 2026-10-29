@@ -8,8 +8,8 @@ version = "1.0.0"
 description = "A single-file RDAP command-line client with no runtime dependencies."
 readme = "README.md"
 requires-python = ">=3.10"
-license = "Artistic-1.0-Perl"
-license-files = ["LICENSE", "NOTICE"]
+license = "Artistic-1.0-Perl AND BSD-2-Clause"
+license-files = ["LICENSE", "LICENSES/BSD-2-Clause.txt", "NOTICE"]
 authors = [{name = "koorg"}]
 keywords = ["rdap", "whois", "domain", "ip", "asn", "cli"]
 classifiers = [

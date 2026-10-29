@@ -6,3 +6,4 @@ prune .git
 prune .venv
 prune .github
 prune dist
+recursive-include LICENSES *.txt

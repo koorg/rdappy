@@ -147,3 +147,5 @@ python -B -m unittest discover -s tests -v
 ## Licence et origine
 
 rdappy reprend les fonctionnalités de [App::rdapper](https://github.com/gbxyz/rdapper), de CentralNic Ltd. et Gavin Brown, dans une implémentation Python distincte. Les crédits, références et différences figurent dans [NOTICE](NOTICE). La licence [Artistic 1.0 de Perl](LICENSE) est également intégrée dans le fichier applicatif pour permettre sa distribution autonome.
+
+Les adaptations issues de Net::RDAP conservent aussi ses conditions et sa clause de non-responsabilité [BSD-2-Clause](LICENSES/BSD-2-Clause.txt). La distribution porte donc l’expression `Artistic-1.0-Perl AND BSD-2-Clause`. Les deux textes complets sont intégrés au fichier autonome et affichés par `rdappy --license`. Cette correction des mentions de licence a été appliquée aux sources de la branche `fr` le 29 octobre 2026 ; les publications actuelles en anglais sont sur `main`.
