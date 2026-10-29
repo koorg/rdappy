@@ -24,7 +24,6 @@ jobs:
     env:
       REQUESTED_VERSION: ${{ inputs.version }}
       IMAGE: ghcr.io/koorg/rdappy
-      DOCKER_CONFIG: ${{ runner.temp }}/rdappy-docker-config
     steps:
       - name: Retrieve the exact revision
         env:
@@ -49,6 +48,7 @@ jobs:
           assert version == os.environ["REQUESTED_VERSION"]
           with open(os.environ["GITHUB_ENV"], "a") as stream:
               stream.write("RDAPPY_VERSION=" + version + "\n")
+              stream.write("DOCKER_CONFIG=" + os.environ["RUNNER_TEMP"] + "/rdappy-docker-config\n")
           PY
       - name: Audit repository and build Debian package
         run: |
