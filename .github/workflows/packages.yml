@@ -130,11 +130,23 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           printf '%s' "$GH_TOKEN" | docker login ghcr.io --username koorg --password-stdin
+          docker buildx imagetools inspect "$IMAGE:1.1.1" --raw > "$RUNNER_TEMP/rdappy-english-version-before.json"
+          docker buildx imagetools inspect "$IMAGE:latest" --raw > "$RUNNER_TEMP/rdappy-english-latest-before.json"
           docker push "$IMAGE:$CONTAINER_VERSION"
           docker push "$IMAGE:fr"
           docker buildx imagetools create --annotation "index:org.opencontainers.image.source=https://github.com/koorg/rdappy" --annotation "index:org.opencontainers.image.authors=koorg" --annotation "index:org.opencontainers.image.licenses=Artistic-1.0-Perl AND BSD-2-Clause" --annotation "index:org.opencontainers.image.description=Client RDAP en français, en un seul fichier Python" --tag "$IMAGE:$CONTAINER_VERSION" --tag "$IMAGE:fr" "$IMAGE:$CONTAINER_VERSION"
           docker buildx imagetools inspect "$IMAGE:$CONTAINER_VERSION" --raw > "$RUNNER_TEMP/rdappy-image-index.json"
           python3 -B tools/audit_distribution.py "$RUNNER_TEMP/rdappy-image-index.json"
+          docker buildx imagetools inspect "$IMAGE:1.1.1" --raw > "$RUNNER_TEMP/rdappy-english-version-after.json"
+          docker buildx imagetools inspect "$IMAGE:latest" --raw > "$RUNNER_TEMP/rdappy-english-latest-after.json"
+          python3 -B - <<'PY'
+          import os
+          from pathlib import Path
+          root = Path(os.environ["RUNNER_TEMP"])
+          for tag in ("version", "latest"):
+              assert (root / ("rdappy-english-" + tag + "-before.json")).read_bytes() == (root / ("rdappy-english-" + tag + "-after.json")).read_bytes()
+          print("English container references unchanged.")
+          PY
           docker logout ghcr.io
           gh api users/koorg/packages/container/rdappy --jq '{name,package_type,visibility,repository:.repository.full_name,html_url}'
           gh api users/koorg/packages/container/rdappy/versions > "$RUNNER_TEMP/rdappy-package-versions.json"
