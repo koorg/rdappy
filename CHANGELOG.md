@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.1.1 — 2026-10-29
+
+- Include the complete BSD-2-Clause conditions and disclaimer for Net::RDAP adaptations in every distribution, including the standalone application.
+- Add a reproducible, architecture-independent Debian package.
+- Publish an executable container package in GitHub Packages, linked to this repository.
+- Audit published source, Git history, and archive metadata for local account identifiers, personal addresses, host paths, and hostnames.
+- Use only the GitHub pseudonym koorg in project maintainer and publication metadata.
+
 ## 1.1.0 — 2026-10-28
 
 - Add `--owner` for a compact summary focused on registrant organizations, names, contact countries, and email addresses.

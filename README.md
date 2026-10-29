@@ -4,7 +4,7 @@ A command-line RDAP client written in Python. The application fits in a single f
 
 Query registration data for domain names, IP addresses and networks, autonomous systems, contacts, and nameservers.
 
-**Python 3.10 or later · Windows, Linux, and macOS · Perl Artistic License 1.0**
+**Python 3.10 or later · Windows, Linux, and macOS · Artistic-1.0-Perl AND BSD-2-Clause**
 
 The English edition is maintained on `main`. The original French edition is preserved on the [`fr` branch](https://github.com/koorg/rdappy/tree/fr).
 
@@ -13,7 +13,7 @@ The English edition is maintained on `main`. The original French edition is pres
 [GitHub releases](https://github.com/koorg/rdappy/releases) include a universal wheel. After downloading it:
 
 ```console
-python -m pip install --user --no-deps rdappy-1.1.0-py3-none-any.whl
+python -m pip install --user --no-deps rdappy-1.1.1-py3-none-any.whl
 rdappy --version
 rdappy example.com
 ```
@@ -23,7 +23,7 @@ Omit `--user` when using an activated virtual environment. The installer creates
 For an isolated installation with an existing `pipx` installation:
 
 ```console
-pipx install ./rdappy-1.1.0-py3-none-any.whl
+pipx install ./rdappy-1.1.1-py3-none-any.whl
 ```
 
 From a local copy of the repository:
@@ -39,6 +39,28 @@ The application also runs without installation:
 ```console
 python rdappy.py example.com
 ```
+
+### Debian and Ubuntu
+
+Download the architecture-independent `.deb` from the same release, then install it:
+
+```console
+sudo apt install ./rdappy_1.1.1_all.deb
+rdappy --owner example.com
+```
+
+The package installs `/usr/bin/rdappy` and requires the distribution's Python 3.10 or later. It has no Python package dependencies, maintainer scripts, or network activity during installation. License notices are installed in `/usr/share/doc/rdappy/`. Remove it with `sudo apt remove rdappy`.
+
+### GitHub Packages
+
+An executable Linux amd64 container is published in [GitHub Packages](https://github.com/koorg/rdappy/pkgs/container/rdappy):
+
+```console
+docker run --rm ghcr.io/koorg/rdappy:1.1.1 --owner example.com
+docker run --rm ghcr.io/koorg/rdappy:1.1.1 --license
+```
+
+The container runs as an unprivileged numeric user. GitHub may require `docker login ghcr.io` when the package is private. The wheel and Debian package are downloadable release assets; GitHub Packages lists the container because it does not provide Python or Debian registries.
 
 ## Usage
 
@@ -154,13 +176,28 @@ python tools/build.py
 The following files are created in `dist/`:
 
 ```text
-rdappy-1.1.0-py3-none-any.whl
-rdappy-1.1.0.tar.gz
+rdappy-1.1.1-py3-none-any.whl
+rdappy-1.1.1.tar.gz
+rdappy_1.1.1_all.deb
 rdappy.py
 SHA256SUMS
 ```
 
-The wheel contains the single application module and its metadata. The source archive also includes the documentation, tests, and build tool. Archive timestamps and metadata are normalized to make builds reproducible with identical sources and tools. Set `SOURCE_DATE_EPOCH` to choose an explicit reference timestamp.
+The wheel contains the single application module and its metadata. The source archive also includes the documentation, tests, and build tools. Archive timestamps and ownership metadata are normalized to make builds reproducible with identical sources and tools. Set `SOURCE_DATE_EPOCH` to choose an explicit reference timestamp.
+
+Build only the Debian package using Python's standard library, without `setuptools` or Debian build tools:
+
+```console
+python -B tools/build.py --deb-only
+```
+
+Published author and maintainer fields use the GitHub pseudonym `koorg`. Audit tracked sources, reachable Git history, and explicitly named archives without printing host identifiers:
+
+```console
+python -B tools/audit_distribution.py --history --github-profile dist/rdappy-1.1.1-py3-none-any.whl dist/rdappy-1.1.1.tar.gz dist/rdappy_1.1.1_all.deb
+```
+
+Omit `--github-profile` for a completely offline audit. Local host identifiers are checked in either mode. The container build context is restricted to the application and its license files.
 
 Tests use only Python and a loopback HTTP server. They do not access the Internet:
 
@@ -170,4 +207,6 @@ python -B -m unittest discover -s tests -v
 
 ## License and provenance
 
-rdappy implements the functionality of [App::rdapper](https://github.com/gbxyz/rdapper), by CentralNic Ltd. and Gavin Brown, as a separate Python application. Credits, references, and implementation differences are listed in [NOTICE](NOTICE). The [Perl Artistic License 1.0](LICENSE) is also embedded in the application file so it can be distributed on its own.
+rdappy implements the functionality of [App::rdapper](https://github.com/gbxyz/rdapper), by CentralNic Ltd. and Gavin Brown, as a separate Python application. Credits, references, and implementation differences are listed in [NOTICE](NOTICE).
+
+The application uses the [Perl Artistic License 1.0](LICENSE). Adaptations based on Net::RDAP also retain its [BSD-2-Clause conditions and disclaimer](LICENSES/BSD-2-Clause.txt), giving the distribution the expression `Artistic-1.0-Perl AND BSD-2-Clause`. Both complete texts are embedded in the single application file and included in the wheel, source archive, Debian package, and container. Run `rdappy --license` to display them. Original copyright holders are credited as required by their licenses.

@@ -1,4 +1,4 @@
-rdappy 1.1.0
+rdappy 1.1.1
 Copyright (c) 2026 koorg.
 
 rdappy is a Python implementation of the functionality of App::rdapper 1.26.
@@ -20,9 +20,15 @@ The Python implementation, packaging and documentation were prepared on
 a single application module, a console entry point, optional disk caching,
 offline JSON input, and valid JSON arrays for combined registry/registrar output.
 
-Distributed under the Perl Artistic License 1.0 (Artistic-1.0-Perl).
-The complete license is provided in LICENSE and embedded in rdappy.py.
+The application is distributed under the Perl Artistic License 1.0
+(Artistic-1.0-Perl). Adaptations based on Net::RDAP retain its BSD-2-Clause
+conditions and disclaimer. The distribution license expression is
+Artistic-1.0-Perl AND BSD-2-Clause.
+The full texts are provided in LICENSE and LICENSES/BSD-2-Clause.txt and
+are both embedded in rdappy.py. Run rdappy --license to display them.
 The names of the original copyright holders do not imply endorsement.
+The complete BSD-2-Clause notice and new distribution formats were added on
+2026-10-29 in version 1.1.1.
 
 The English edition is maintained on the main branch. The original French
 edition is preserved on the fr branch at https://github.com/koorg/rdappy/tree/fr.

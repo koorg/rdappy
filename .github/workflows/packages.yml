@@ -1,0 +1,118 @@
+name: Publish packages
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version already present in the selected revision
+        required: true
+        default: "1.1.1"
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: packages-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Debian installation and GitHub Packages
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      REQUESTED_VERSION: ${{ inputs.version }}
+      IMAGE: ghcr.io/koorg/rdappy
+      DOCKER_CONFIG: ${{ runner.temp }}/rdappy-docker-config
+    steps:
+      - name: Retrieve the exact revision
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_PROMPT_DISABLED: "1"
+        run: |
+          gh auth setup-git --hostname github.com
+          gh repo clone "$GITHUB_REPOSITORY" . -- --no-checkout --filter=blob:none
+          git fetch --no-tags origin "$GITHUB_SHA"
+          git checkout --detach "$GITHUB_SHA"
+      - name: Check version and installed tools
+        run: |
+          python3 --version
+          docker --version
+          dpkg --version
+          python3 -B - <<'PY'
+          import ast, os, re
+          from pathlib import Path
+          tree = ast.parse(Path("rdappy.py").read_text(encoding="utf-8"))
+          version = next(ast.literal_eval(node.value) for node in tree.body if isinstance(node, ast.Assign) and any(isinstance(target, ast.Name) and target.id == "VERSION" for target in node.targets))
+          assert re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", version)
+          assert version == os.environ["REQUESTED_VERSION"]
+          with open(os.environ["GITHUB_ENV"], "a") as stream:
+              stream.write("RDAPPY_VERSION=" + version + "\n")
+          PY
+      - name: Audit repository and build Debian package
+        run: |
+          python3 -B tools/audit_distribution.py --history
+          python3 -B tools/build.py --deb-only --output "$RUNNER_TEMP/rdappy-packages"
+          python3 -B tools/audit_distribution.py "$RUNNER_TEMP/rdappy-packages/rdappy_${RDAPPY_VERSION}_all.deb"
+          python3 -B - <<'PY'
+          import hashlib, os
+          from pathlib import Path
+          path = Path(os.environ["RUNNER_TEMP"]) / "rdappy-packages" / ("rdappy_" + os.environ["RDAPPY_VERSION"] + "_all.deb")
+          print("Debian SHA256:", hashlib.sha256(path.read_bytes()).hexdigest())
+          PY
+      - name: Install Debian package and test the installed application
+        run: |
+          dpkg-deb --info "$RUNNER_TEMP/rdappy-packages/rdappy_${RDAPPY_VERSION}_all.deb"
+          sudo dpkg --install "$RUNNER_TEMP/rdappy-packages/rdappy_${RDAPPY_VERSION}_all.deb"
+          /usr/bin/rdappy --version
+          python3 -B - <<'PY'
+          import importlib.machinery, importlib.util, sys, unittest
+          loader = importlib.machinery.SourceFileLoader("rdappy", "/usr/bin/rdappy")
+          spec = importlib.util.spec_from_loader(loader.name, loader)
+          module = importlib.util.module_from_spec(spec)
+          sys.modules["rdappy"] = module
+          loader.exec_module(module)
+          result = unittest.TextTestRunner(verbosity=2).run(unittest.defaultTestLoader.discover("tests"))
+          sys.exit(not result.wasSuccessful())
+          PY
+          sudo dpkg --remove rdappy
+      - name: Build container from the pinned official Python image
+        run: |
+          docker build --platform linux/amd64 --provenance=false --sbom=false --build-arg "VERSION=$RDAPPY_VERSION" --build-arg "REVISION=$GITHUB_SHA" --tag "$IMAGE:$RDAPPY_VERSION" --tag "$IMAGE:latest" .
+      - name: Test container with network disabled
+        run: |
+          docker run --rm --network none "$IMAGE:$RDAPPY_VERSION" --version
+          docker run --rm --network none "$IMAGE:$RDAPPY_VERSION" --help
+          docker run --rm --network none --mount "type=bind,source=$GITHUB_WORKSPACE/tests,target=/checks,readonly" --entrypoint /usr/local/bin/python3 "$IMAGE:$RDAPPY_VERSION" -B -c 'import shutil, sys, unittest; shutil.copyfile("/checks/test_rdappy.py", "/tmp/test_rdappy.py"); sys.path.insert(0, "/opt/rdappy"); result = unittest.TextTestRunner(verbosity=2).run(unittest.defaultTestLoader.discover("/tmp", pattern="test_rdappy.py")); sys.exit(not result.wasSuccessful())'
+          docker run --rm --network none --entrypoint /usr/local/bin/python3 "$IMAGE:$RDAPPY_VERSION" -B -c 'import sys; sys.path.insert(0, "/opt/rdappy"); import rdappy; from pathlib import Path; assert Path("/usr/share/licenses/rdappy/LICENSE").read_text().strip() in rdappy.ARTISTIC_LICENSE; assert Path("/usr/share/licenses/rdappy/BSD-2-Clause.txt").read_text().strip() == rdappy.BSD_2_CLAUSE_LICENSE.strip()'
+          docker image inspect "$IMAGE:$RDAPPY_VERSION" > "$RUNNER_TEMP/rdappy-image.json"
+          python3 -B tools/audit_distribution.py "$RUNNER_TEMP/rdappy-image.json"
+          python3 -B - <<'PY'
+          import json, os
+          from pathlib import Path
+          image = json.loads((Path(os.environ["RUNNER_TEMP"]) / "rdappy-image.json").read_text())[0]
+          assert image["Config"]["User"] == "65532:65532"
+          labels = image["Config"]["Labels"]
+          assert labels["org.opencontainers.image.authors"] == "koorg"
+          assert labels["org.opencontainers.image.licenses"] == "Artistic-1.0-Perl AND BSD-2-Clause"
+          assert labels["org.opencontainers.image.source"] == "https://github.com/koorg/rdappy"
+          assert labels["org.opencontainers.image.version"] == os.environ["RDAPPY_VERSION"]
+          PY
+      - name: Publish to GitHub Packages
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          printf '%s' "$GH_TOKEN" | docker login ghcr.io --username koorg --password-stdin
+          docker push "$IMAGE:$RDAPPY_VERSION"
+          docker push "$IMAGE:latest"
+          docker logout ghcr.io
+          gh api users/koorg/packages/container/rdappy --jq '{name,package_type,visibility,repository:.repository.full_name,html_url}'
+          gh api users/koorg/packages/container/rdappy/versions > "$RUNNER_TEMP/rdappy-package-versions.json"
+          python3 -B - <<'PY'
+          import json, os
+          from pathlib import Path
+          versions = json.loads((Path(os.environ["RUNNER_TEMP"]) / "rdappy-package-versions.json").read_text())
+          release = next(version for version in versions if os.environ["RDAPPY_VERSION"] in version["metadata"]["container"]["tags"])
+          print(json.dumps({"digest": release["name"], "tags": release["metadata"]["container"]["tags"]}, sort_keys=True))
+          PY

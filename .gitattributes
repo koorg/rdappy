@@ -2,3 +2,4 @@
 *.whl binary
 *.gz binary
 *.zip binary
+*.deb binary
