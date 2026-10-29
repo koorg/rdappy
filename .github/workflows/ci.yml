@@ -1,11 +1,11 @@
-name: Validation
+name: Validation FR
 
 on:
   push:
-    branches: [main]
-    tags: ["v*"]
+    branches: [fr]
+    tags: ["fr-v*"]
   pull_request:
-    branches: [main]
+    branches: [fr]
   workflow_dispatch:
 
 permissions:

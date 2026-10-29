@@ -1,30 +1,39 @@
-rdappy 1.0.0
+rdappy 1.1.1 — édition française
 Copyright (c) 2026 koorg.
 
-rdappy is a Python implementation of the functionality of App::rdapper 1.26.
-It is a separate implementation and is not an official release of rdapper.
+rdappy est une implémentation Python des fonctions de App::rdapper 1.26.
+Il s’agit d’une implémentation distincte, et non d’une version officielle
+de rdapper.
 
-App::rdapper:
+App::rdapper :
   Copyright (c) 2012-2023 CentralNic Ltd.
   Copyright (c) 2023-2026 Gavin Brown.
   https://github.com/gbxyz/rdapper
-  Reference revision: b168358d9513d0b170c8e2c190c845e8ee5ef1fa
+  Révision de référence : b168358d9513d0b170c8e2c190c845e8ee5ef1fa
 
-Net::RDAP (bootstrap discovery, RDAP objects and EPP status correspondence):
+Net::RDAP (découverte des services, objets RDAP et correspondance des statuts EPP) :
   Copyright (c) 2018-2023 CentralNic Ltd.
   Copyright (c) 2024-2026 Gavin Brown.
   https://github.com/gbxyz/perl-net-rdap
 
-The Python implementation, packaging and documentation were prepared on
-2026-10-28. Differences include the standard-library HTTP/JSON/IP implementation,
-a single application module, a console entry point, optional disk caching,
-offline JSON input, and valid JSON arrays for combined registry/registrar output.
+L’implémentation Python initiale a été préparée le 28 octobre 2026.
+Elle utilise la bibliothèque standard pour HTTP, JSON et les adresses IP,
+un module applicatif unique, une commande installable, un cache disque
+facultatif, la lecture de fichiers JSON locaux et des tableaux JSON valides
+pour les réponses combinées du registre et du registrar.
 
-The application is distributed under the Perl Artistic License 1.0
-(Artistic-1.0-Perl). Adaptations based on Net::RDAP retain its BSD-2-Clause
-conditions and disclaimer. The distribution license expression is
-Artistic-1.0-Perl AND BSD-2-Clause.
-Both full texts are provided in LICENSE and LICENSES/BSD-2-Clause.txt and
-embedded in rdappy.py. Run rdappy --license to display them.
-The complete BSD-2-Clause notice was added on 2026-10-29.
-The names of the original copyright holders do not imply endorsement.
+L’édition française a été synchronisée avec les fonctions de main 1.1.1
+le 29 octobre 2026, y compris les résumés --owner, les paquets Debian et
+conteneur, l’audit des distributions et les tests associés. L’interface
+reste en français ; les clés JSON et les valeurs reçues sont conservées.
+
+Le programme est distribué sous la licence Artistic 1.0 de Perl
+(Artistic-1.0-Perl). Les adaptations fondées sur Net::RDAP conservent ses
+conditions et sa clause de non-responsabilité BSD-2-Clause. L’expression
+de licence de la distribution est Artistic-1.0-Perl AND BSD-2-Clause.
+Les deux textes complets figurent dans LICENSE et LICENSES/BSD-2-Clause.txt
+et sont intégrés dans rdappy.py. La commande rdappy --license les affiche.
+Les noms des titulaires des droits ne constituent pas une approbation.
+
+La branche main fournit l’édition anglaise principale. La branche fr
+fournit l’édition française : https://github.com/koorg/rdappy/tree/fr.

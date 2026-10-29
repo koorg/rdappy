@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "rdappy"
-version = "1.0.0"
-description = "A single-file RDAP command-line client with no runtime dependencies."
+version = "1.1.1"
+description = "Client RDAP en français, en un seul fichier Python et sans dépendance à l’exécution."
 readme = "README.md"
 requires-python = ">=3.10"
 license = "Artistic-1.0-Perl AND BSD-2-Clause"
@@ -15,6 +15,7 @@ keywords = ["rdap", "whois", "domain", "ip", "asn", "cli"]
 classifiers = [
   "Environment :: Console",
   "Intended Audience :: System Administrators",
+  "Natural Language :: French",
   "Operating System :: OS Independent",
   "Programming Language :: Python :: 3 :: Only",
   "Programming Language :: Python :: 3.10",
@@ -32,7 +33,7 @@ rdappy = "rdappy:cli"
 
 [project.urls]
 Repository = "https://github.com/koorg/rdappy"
-Documentation = "https://github.com/koorg/rdappy#readme"
+Documentation = "https://github.com/koorg/rdappy/blob/fr/README.md"
 Issues = "https://github.com/koorg/rdappy/issues"
 
 [tool.setuptools]

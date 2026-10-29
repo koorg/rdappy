@@ -1,12 +1,31 @@
-# Changelog
+# Historique des versions
 
-## 1.0.0 — 2026-10-28
+## 1.1.1 — 29 octobre 2026
 
-- Client RDAP autonome en un seul module Python, sans dépendance à l’exécution.
-- Commande `rdappy` installable sur Windows, Linux et macOS.
-- Domaines, TLD, IPv4/IPv6 et CIDR, ASN, entités et serveurs DNS.
-- Découverte des services dans les registres IANA et renvois registrar.
-- Recherche de domaines, sortie JSON, affichage court et lecture de JSON local.
-- Contacts jCard, DNSSEC, événements, statuts, TTL, avis et champs masqués.
-- Authentification limitée à l’origine choisie, vérification TLS et cache optionnel.
-- Distributions wheel et source, empreintes SHA-256 et tests hors ligne.
+- Synchronisation de `fr` avec toutes les fonctions de `main` 1.1.1.
+- Interface, aide, libellés et diagnostics en français, indépendamment de la locale et de la langue demandée au serveur.
+- Option `--owner` centrée sur l’organisation titulaire, avec combinaison registre/registrar, filtrage des rôles et dédoublonnage.
+- Sortie `--owner --raw` avec les mêmes clés JSON que l’édition anglaise ; prise en charge des domaines, réseaux IP, ASN et fichiers locaux.
+- Textes Artistic et BSD-2-Clause complets dans chaque distribution et dans `--license`.
+- Build Debian reproductible et indépendant de l’architecture, en bibliothèque standard.
+- Conteneur français avec les tags `1.1.1-fr` et `fr` ; références de publication propres à cette édition.
+- Audit des sources, de l’historique et des archives pour détecter les identifiants du poste et du profil.
+- Métadonnées d’auteur et de maintenance limitées au pseudo GitHub `koorg`.
+- Reprise de tous les tests 1.1.1 et contrôles supplémentaires de l’interface française et de la compatibilité JSON.
+
+## 1.1.0 — 28 octobre 2026
+
+- Ajout, dans l’édition anglaise, du résumé `--owner` des organisations, noms, courriels et pays des contacts titulaires.
+- Combinaison registre/registrar par défaut dans ce mode, avec sélection explicite d’une source possible.
+- Exclusion des contacts du registrar, techniques, administratifs, d’abus et des titulaires imbriqués sous un tiers.
+
+## 1.0.1 — 28 octobre 2026
+
+- Édition anglaise principale sur `main` et conservation de l’édition française sur `fr`.
+- Aide, diagnostics et libellés anglais indépendants de la langue du système sur `main`.
+
+## 1.0.0 — 28 octobre 2026
+
+- Version initiale du client RDAP Python en un seul fichier.
+- Commande `rdappy`, wheel universel, archive source et licences incluses.
+- Requêtes de domaines, réseaux IP, ASN, contacts et serveurs DNS, recherche, DNS inverse et lecture de fichiers JSON.

@@ -19,11 +19,11 @@ from urllib.request import ProxyHandler, Request
 from rdappy import (
     Client, Formatter, RdapError, Response, as_number, configuration_args,
     decode_document, detect_type, domain_name, http_url, ip_network,
-    local_document, main, origin, parser, reverse_name, reverse_network,
+    local_document, main, origin, owner_summary, parser, reverse_name, reverse_network,
 )
 import rdappy
 
-domain = {"objectClassName": "domain", "ldhName": "example.test", "handle": "REGISTRY", "entities": [{"objectClassName": "entity", "handle": "E-TEST", "roles": ["registrant"], "vcardArray": ["vcard", [["fn", {}, "text", "Alice"], ["email", {}, "text", "alice@example.test"], ["adr", {}, "text", ["", "", "1 rue Test", "Paris", "", "75000", "FR"]]]]}], "secureDNS": {"delegationSigned": True, "dsData": [{"keyTag": 1, "algorithm": 13, "digestType": 2, "digest": "ABCD"}]}, "notices": [{"title": "Terms", "description": ["Notice text"]}]}
+domain = {"objectClassName": "domain", "ldhName": "example.test", "handle": "REGISTRY", "entities": [{"objectClassName": "entity", "handle": "E-TEST", "roles": ["registrant"], "vcardArray": ["vcard", [["fn", {}, "text", "Alice"], ["email", {}, "text", "alice@example.test"], ["adr", {}, "text", ["", "", "1 Test Street", "Paris", "", "75000", "FR"]]]]}], "secureDNS": {"delegationSigned": True, "dsData": [{"keyTag": 1, "algorithm": 13, "digestType": 2, "digest": "ABCD"}]}, "notices": [{"title": "Terms", "description": ["Notice text"]}]}
 
 requests = []
 base = ""
@@ -156,7 +156,7 @@ class Tests(unittest.TestCase):
         broken = Response(dict(domain, links=[{"rel": "related", "type": "application/rdap+json", "href": base + "missing"}]), response.url)
         with contextlib.redirect_stderr(io.StringIO()) as err:
             self.assertEqual(self.client.records(broken), [broken])
-        self.assertIn("conserve", err.getvalue())
+        self.assertIn("résultat du registre conservé", err.getvalue())
 
     def test_http_errors_and_invalid_json(self):
         for path, status in (("missing", 404), ("limited", 429), ("bad-json", None), ("list-json", None)):
@@ -165,16 +165,16 @@ class Tests(unittest.TestCase):
             self.assertEqual(error.exception.status, status)
         with self.assertRaises(RdapError):
             decode_document(b'{"errorCode":403,"title":"Forbidden"}', base)
-        with patch.object(self.client.opener, "open", side_effect=HTTPException("connexion interrompue")):
+        with patch.object(self.client.opener, "open", side_effect=HTTPException("connection interrupted")):
             with self.assertRaises(RdapError):
                 self.client.fetch(base + "truncated")
 
     def test_failover_and_rate_limits(self):
         response = Response(domain, base)
-        with patch.object(self.client, "fetch", side_effect=[RdapError("connexion impossible"), response]) as fetch:
+        with patch.object(self.client, "fetch", side_effect=[RdapError("connection failed"), response]) as fetch:
             self.assertEqual(self.client.candidates([base + "first", base + "second"]), response)
             self.assertEqual(fetch.call_count, 2)
-        with patch.object(self.client, "fetch", side_effect=RdapError("quota atteint", 429)) as fetch:
+        with patch.object(self.client, "fetch", side_effect=RdapError("rate limit reached", 429)) as fetch:
             with self.assertRaises(RdapError):
                 self.client.candidates([base + "first", base + "second"])
             self.assertEqual(fetch.call_count, 1)
@@ -232,16 +232,16 @@ class Tests(unittest.TestCase):
 
     def test_formatting(self):
         response = Response(domain, base)
-        output = Formatter(language="en", width=120).render(response)
-        for value in ("Alice", "alice@example.test", "Paris", "DS Record: 1 13 2 ABCD", "Notice text"):
+        output = Formatter(width=120).render(response)
+        for value in ("Alice", "alice@example.test", "Paris", "Enregistrement DS: 1 13 2 ABCD", "Notice text"):
             self.assertIn(value, output)
         short = Formatter(short=True).render(response)
         self.assertNotIn("Notice text", short)
         self.assertIn("Alice", short)
-        self.assertIn("Nom de domaine", Formatter(language="fr").render(response))
+        self.assertIn("Type d'objet: Nom de domaine", Formatter().render(response))
         self.assertNotIn("\x1b", Formatter().render(Response(dict(domain, ldhName="x\x1b[2J"), base)))
         enriched = dict(domain, status=["active", "associated", "validated"], ttl0_data={"values": {"NS": 3600}, "remarks": [{"description": ["TTL notice"]}]})
-        output = Formatter(language="en").render(Response(enriched, base))
+        output = Formatter().render(Response(enriched, base))
         self.assertIn("https://icann.org/epp#ok", output)
         self.assertIn("https://icann.org/epp#linked", output)
         self.assertNotIn("https://icann.org/epp#validated", output)
@@ -261,7 +261,7 @@ class Tests(unittest.TestCase):
             self.assertEqual(local_document(path.as_uri()).data, domain)
             self.assertEqual(requests, [])
             config = Path(directory) / "config"
-            config.write_text("# commentaire\n--short\n--language=fr\n", encoding="utf-8")
+            config.write_text("# comment\n--short\n--language=fr\n", encoding="utf-8")
             args = parser().parse_args(configuration_args(["--config", str(config), "example.test"]))
             self.assertTrue(args.short)
             self.assertEqual(args.language, "fr")
@@ -339,6 +339,114 @@ class Tests(unittest.TestCase):
         with patch.object(Client, "search", return_value=[Response({"domainSearchResults": []}, base)]):
             self.assertEqual(self.run_cli("--search", "absent.test"), (0, "", ""))
 
+    def test_owner_summary_uses_only_direct_registrants(self):
+        owner = {"roles": ["registrant"], "vcardArray": ["vcard", [
+            ["org", {}, "text", "Example Company"], ["fn", {}, "text", "Alice"],
+            ["email", {}, "text", "owner@example.test"],
+            ["adr", {"cc": "FR"}, "text", ["", "", "", "", "", "", "France"]],
+        ]]}
+        unrelated = {"roles": ["registrar"], "vcardArray": ["vcard", [["org", {}, "text", "Wrong Registrar"]]],
+                     "entities": [{"roles": ["registrant"], "vcardArray": ["vcard", [["org", {}, "text", "Nested Registrar Owner"]]]}]}
+        data = dict(domain, entities=[owner, unrelated, {"roles": ["abuse"], "vcardArray": ["vcard", [["org", {}, "text", "Abuse Organization"]]]}])
+        summary = owner_summary([Response(data, base)])
+        self.assertEqual(summary["organizations"], ["Example Company"])
+        self.assertEqual(summary["registrants"], ["Alice"])
+        self.assertEqual(summary["emails"], ["owner@example.test"])
+        self.assertEqual(summary["countries"], ["FR"])
+        output = Formatter().render_owner(summary)
+        self.assertIn("Organisation: Example Company", output)
+        self.assertNotIn("Wrong Registrar", output)
+        self.assertNotIn("Nested Registrar Owner", output)
+        self.assertNotIn("Abuse Organization", output)
+        self.assertNotIn("Notice text", output)
+
+    def test_owner_summary_rir_org_kind_and_individual_names(self):
+        data = {"objectClassName": "ip network", "name": "NETWORK-LABEL", "country": "US",
+                "startAddress": "192.0.2.0", "endAddress": "192.0.2.255",
+                "entities": [{"roles": ["registrant"], "vcardArray": ["vcard", [
+                    ["kind", {}, "text", "org"], ["fn", {}, "text", "Example Operator"],
+                ]]}]}
+        summary = owner_summary([Response(data, base)])
+        self.assertEqual(summary["organizations"], ["Example Operator"])
+        self.assertEqual(summary["registrants"], [])
+        self.assertEqual(summary["countries"], [])
+        self.assertIn("Réseau: 192.0.2.0 - 192.0.2.255", Formatter().render_owner(summary))
+        individual = {"roles": ["registrant"], "vcardArray": ["vcard", [["kind", {}, "text", "individual"], ["fn", {}, "text", "Alice"]]]}
+        summary = owner_summary([Response(dict(data, entities=[individual]), base)])
+        self.assertEqual(summary["organizations"], [])
+        self.assertEqual(summary["registrants"], ["Alice"])
+
+    def test_owner_summary_merges_sources_and_deduplicates(self):
+        first = {"roles": ["registrant"], "vcardArray": ["vcard", [
+            ["org", {}, "text", "Example Company"], ["fn", {}, "text", "Alice"],
+            ["email", {}, "text", "owner@example.test"],
+        ]]}
+        second = {"roles": ["registrant"], "vcardArray": ["vcard", [
+            ["org", {}, "text", "EXAMPLE COMPANY"], ["fn", {}, "text", "Alice"],
+            ["email", {}, "text", "owner@example.test"], ["email", {}, "text", "public@example.test"],
+        ]]}
+        records = [Response(dict(domain, entities=[first]), base + "registry"),
+                   Response(dict(domain, ldhName="EXAMPLE.TEST.", entities=[second]), base + "registrar")]
+        summary = owner_summary(records)
+        self.assertEqual(summary["organizations"], ["Example Company"])
+        self.assertEqual(summary["registrants"], ["Alice"])
+        self.assertEqual(summary["emails"], ["owner@example.test", "public@example.test"])
+        self.assertEqual(summary["sources"], [base + "registry", base + "registrar"])
+
+    def test_owner_summary_never_substitutes_registrar_for_missing_owner(self):
+        registrar = {"roles": ["registrar"], "vcardArray": ["vcard", [["org", {}, "text", "Registrar Company"]]]}
+        malformed = {"roles": ["registrant"], "vcardArray": ["vcard", None]}
+        summary = owner_summary([Response(dict(domain, entities=[registrar, malformed]), base)])
+        self.assertEqual(summary["organizations"], [])
+        self.assertEqual(summary["registrants"], [])
+        output = Formatter().render_owner(summary)
+        self.assertIn("Organisation: Non divulguée ou non fournie", output)
+        self.assertNotIn("Registrar Company", output)
+
+    def test_owner_cli_fetches_both_sources_unless_explicitly_selected(self):
+        code, out, err = self.run_cli("--server", base + "registry/", "--owner", "--raw", "example.test")
+        self.assertEqual(code, 0, err)
+        summary = json.loads(out)
+        self.assertEqual(summary["object_type"], "domain")
+        self.assertEqual(summary["registrants"], ["Alice"])
+        self.assertEqual(len(summary["sources"]), 2)
+        self.assertEqual(len(requests), 2)
+        for mode in ("--registry", "--registrar"):
+            requests.clear()
+            code, out, err = self.run_cli("--server", base + "registry/", "--owner", mode, "--raw", "example.test")
+            self.assertEqual(code, 0, err)
+            self.assertEqual(len(json.loads(out)["sources"]), 1)
+            self.assertEqual(len(requests), 1 if mode == "--registry" else 2)
+
+    def test_owner_cli_local_json_is_focused_and_offline(self):
+        with tempfile.TemporaryDirectory(prefix=".rdappy-test-", dir=Path(__file__).resolve().parent) as directory:
+            path = Path(directory) / "record.json"
+            path.write_text(json.dumps(domain), encoding="utf-8")
+            code, out, err = self.run_cli("--owner", "--file", str(path), "--raw")
+            self.assertEqual(code, 0, err)
+            self.assertEqual(json.loads(out)["registrants"], ["Alice"])
+            self.assertNotIn("entities", json.loads(out))
+            code, out, err = self.run_cli("--owner", "--file", str(path))
+            self.assertEqual(code, 0, err)
+            self.assertIn("Titulaire: Alice", out)
+            self.assertNotIn("Notice text", out)
+            self.assertEqual(requests, [])
+
+    def test_owner_summary_rejects_mismatched_or_unsupported_records(self):
+        records = [Response(domain, base), Response(dict(domain, ldhName="different.test"), base + "different")]
+        with self.assertRaisesRegex(RdapError, "noms de domaine différents"):
+            owner_summary(records)
+        for records in ([], [Response({"objectClassName": "nameserver"}, base)],
+                        [Response(domain, base), Response({"objectClassName": "autnum"}, base)]):
+            with self.subTest(records=records), self.assertRaises(RdapError):
+                owner_summary(records)
+
+    def test_owner_cli_rejects_search(self):
+        with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit) as error:
+            main(["--no-config", "--owner", "--search", "exampl*.test"])
+        self.assertEqual(error.exception.code, 2)
+        self.assertEqual(requests, [])
+
     def test_search_deduplicates_services_and_results(self):
         with patch.object(self.client, "services", return_value=[(["a"], [base + "registry/"]), (["b"], [base + "registry/"])]):
             self.assertEqual(len(self.client.search("exampl*")), 1)
@@ -363,6 +471,44 @@ class Tests(unittest.TestCase):
         self.assertNotIn("--self-test", help_text)
         self.assertNotIn("--source", help_text)
         self.assertEqual(parser().prog, "rdappy")
+
+    def test_french_interface_is_independent_of_locale_and_response_language(self):
+        with patch.dict(os.environ, {"LC_ALL": "en_US.UTF-8", "LC_MESSAGES": "en_US.UTF-8", "LANG": "en_US.UTF-8"}):
+            self.assertEqual(parser().parse_args(["example.test"]).language, "fr")
+            self.assertIn("Client RDAP en un seul fichier Python", parser().format_help())
+            code, out, err = self.run_cli("--registry", "--server", base + "registry/", "example.test")
+            self.assertEqual(code, 0, err)
+            self.assertIn("Type d'objet: Nom de domaine", out)
+            self.assertEqual(requests[-1][2], "fr")
+            code, out, err = self.run_cli("--registry", "--language", "en", "--server", base + "registry/", "example.test")
+            self.assertEqual(code, 0, err)
+            self.assertIn("Type d'objet: Nom de domaine", out)
+            self.assertEqual(requests[-1][2], "en")
+            code, out, err = self.run_cli("--ip", "999.1.1.1")
+            self.assertEqual((code, out), (1, ""))
+            self.assertTrue(err.startswith("Erreur : Adresse ou préfixe IP invalide :"), err)
+
+    def test_french_parser_diagnostics(self):
+        for args, message in ((["--unknown"], "arguments non reconnus"),
+                              (["--registry", "--both", "example.test"], "incompatible avec l’argument")):
+            with self.subTest(args=args), contextlib.redirect_stderr(io.StringIO()) as output:
+                with self.assertRaises(SystemExit) as error:
+                    main(["--no-config", *args])
+                self.assertEqual(error.exception.code, 2)
+                self.assertIn("rdappy: erreur :", output.getvalue())
+                self.assertIn(message, output.getvalue())
+
+    def test_french_owner_output_preserves_server_values_and_json_schema(self):
+        organization = {"roles": ["registrant"], "vcardArray": ["vcard", [
+            ["org", {}, "text", "Example Company"], ["fn", {}, "text", "Alice"],
+            ["email", {}, "text", "owner@example.test"],
+        ]]}
+        summary = owner_summary([Response(dict(domain, entities=[organization]), base)])
+        output = Formatter().render_owner(summary)
+        for value in ("Domaine: example.test", "Organisation: Example Company", "Titulaire: Alice", "Courriel: owner@example.test"):
+            self.assertIn(value, output)
+        self.assertEqual(set(summary), {"object_type", "object", "organizations", "registrants", "countries", "emails", "sources"})
+        self.assertEqual(summary["organizations"], ["Example Company"])
 
     def test_command_exits_cleanly_when_output_pipe_closes(self):
         with tempfile.TemporaryDirectory(prefix=".rdappy-test-", dir=Path(__file__).resolve().parent) as directory:
