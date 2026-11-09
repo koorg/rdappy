@@ -1,4 +1,4 @@
-rdappy 1.1.2 — édition française
+rdappy 1.2.0 — édition française
 Copyright (c) 2026 koorg.
 
 rdappy est une implémentation Python des fonctions de App::rdapper 1.26.
@@ -43,3 +43,7 @@ dépendance à l’exécution. Les noms de pays proviennent de la table IANA tzd
 iso3166.tab, dans le domaine public, complétée par des alias usuels.
 Source : https://data.iana.org/time-zones/tzdb/iso3166.tab
 Empreinte SHA256 des données : 837c80785080c8433fd9d4ea87e78f161ac7a40389301c5153d4f90198baeb2a
+
+La version 1.2.0 étend les recherches aux entités, serveurs DNS, réseaux IP
+et ASN, reconnaît les handles et chemins RDAP usuels, et donne accès à
+l’aide distante et aux extensions des services sans dépendance supplémentaire.

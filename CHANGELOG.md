@@ -1,5 +1,14 @@
 # Historique des versions
 
+## 1.2.0 — 9 novembre 2026
+
+- Reconnaissance des handles d’entité usuels et des chemins RDAP ; découverte des mainteneurs et organisations RIPE sans suffixe enregistré.
+- Recherches de domaines, serveurs DNS, entités, réseaux IP et ASN avec choix du champ via `--search-field`.
+- Accès à `/help`, aux relations RIR, aux recherches inversées et aux extensions propres aux services avec `--path` et `--param` répétable.
+- Prise en charge de `ipSearchResults`, `autnumSearchResults`, des tableaux de résultats d’extensions et des réponses limitées aux notices, avec conservation du JSON complet et des options de sortie existantes.
+- Affichage des réseaux et ASN imbriqués dans les entités et des extensions annoncées dans l’aide distante.
+- Tests hors ligne des nouvelles requêtes, de l’encodage, du cache, de l’authentification et du maintien des chemins dans le service choisi.
+
 ## 1.1.2 — 29 octobre 2026
 
 - Indication de pays avec origine explicite dans `--owner` : adresse du titulaire, puis enregistrement du réseau IP ou de l’ASN si nécessaire.

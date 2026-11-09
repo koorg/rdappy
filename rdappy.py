@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: Artistic-1.0-Perl AND BSD-2-Clause
-# Édition française 1.1.2 ; portage et adaptations documentés dans NOTICE.
+# Édition française 1.2.0 ; portage et adaptations documentés dans NOTICE.
 """rdappy: a standalone Registration Data Access Protocol (RDAP) client.
 
 Python 3.10 or later. No runtime dependencies.
@@ -36,11 +36,15 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import quote, unquote, urlencode, urljoin, urlsplit, urlunsplit
 from urllib.request import HTTPRedirectHandler, HTTPSHandler, Request, build_opener
 
-VERSION = "1.1.2"
+VERSION = "1.2.0"
 IANA = "https://data.iana.org/rdap/"
 MAX_BYTES = 16 * 1024 * 1024
-SEARCH_KEYS = ("domainSearchResults", "nameserverSearchResults", "entitySearchResults", "domainSearchResult", "nameserverSearchResult", "entitySearchResult")
-TYPES = ("domain", "ip", "autnum", "entity", "nameserver", "tld", "url")
+SEARCH_PATHS = {"domain": "domains", "nameserver": "nameservers", "entity": "entities", "ip": "ips", "autnum": "autnums"}
+SEARCH_FIELDS = {"domain": ("name", "nsLdhName", "nsIp"), "nameserver": ("name", "ip"),
+                 "entity": ("fn", "handle"), "ip": ("name", "handle"), "autnum": ("name", "handle")}
+SEARCH_RESULTS = {kind: (kind + "SearchResults", kind + "SearchResult") for kind in SEARCH_PATHS}
+SEARCH_KEYS = tuple(key for keys in SEARCH_RESULTS.values() for key in keys)
+TYPES = ("domain", "ip", "autnum", "entity", "nameserver", "tld", "url", "path", "help")
 EPP_STATUSES = set("addPeriod autoRenewPeriod clientDeleteProhibited clientHold clientRenewProhibited clientTransferProhibited clientUpdateProhibited inactive pendingCreate pendingDelete pendingRenew pendingRestore pendingTransfer pendingUpdate redemptionPeriod renewPeriod serverDeleteProhibited serverRenewProhibited serverTransferProhibited serverUpdateProhibited serverHold transferPeriod".split())
 
 
@@ -126,10 +130,14 @@ def as_number(value):
 def detect_type(value):
     if re.match(r"^(?:https?|file)://", value, re.I):
         return "url"
+    if re.match(r"^/?(?:domain|ip|autnum|entity|nameserver|domains|ips|autnums|entities|nameservers|help)(?:/|\?)", value) or value == "/help":
+        return "path"
     if re.match(r"^asn?[0-9]+$", value, re.I) or value.isdecimal():
         return "autnum"
     if ":" in value or "/" in value or re.fullmatch(r"[0-9]+(?:\.[0-9]+){3}", value):
         return "ip"
+    if "." not in value and re.fullmatch(r"(?:ORG-.+|MNT-.+|IRT-.+|.+-(?:MNT|RIPE|ARIN|APNIC|AFRINIC|LACNIC|FRNIC|NORID))", value, re.I):
+        return "entity"
     return "tld" if "." not in value.rstrip(".") else "domain"
 
 
@@ -207,8 +215,65 @@ def endpoint(base, kind, value=""):
 
 def service_base(url):
     p = urlsplit(http_url(url))
-    path = re.split(r"/(?:domain|ip|autnum|entity|nameserver)(?:/|$)", p.path, maxsplit=1)[0]
+    path = re.split(r"/(?:domain|ip|autnum|entity|nameserver|domains|ips|autnums|entities|nameservers|help)(?:/|$)", p.path, maxsplit=1)[0]
     return urlunsplit(p._replace(path=path.rstrip("/") + "/", query="", fragment=""))
+
+
+def query_parameters(values):
+    """Parse repeatable CLI parameters without losing duplicate keys or empty values."""
+    result = []
+    for value in values:
+        key, sep, content = value.partition("=")
+        if not sep or not re.fullmatch(r"[A-Za-z0-9_.~-]+", key) or any(ord(c) < 32 or ord(c) == 127 for c in content):
+            raise RdapError('--param attend NOM=VALEUR, sans caractère de contrôle.')
+        result.append((key, unicodedata.normalize("NFC", content)))
+    return result
+
+
+def with_parameters(url, params=()):
+    p = urlsplit(http_url(url))
+    query = "&".join(part for part in (p.query, urlencode(params)) if part)
+    return urlunsplit(p._replace(query=query))
+
+
+def relative_query(value):
+    """Keep a service-relative query within its selected base path."""
+    try:
+        p = urlsplit(value)
+        if p.scheme or p.netloc or p.fragment or not p.path or value.startswith("//") or "\\" in value or "#" in value:
+            raise ValueError
+        decoded = unquote(p.path)
+        if "\\" in decoded or any(part in (".", "..") for part in decoded.split("/")):
+            raise ValueError
+        if any(ord(c) < 32 or ord(c) == 127 for c in unquote(value)):
+            raise ValueError
+        return p._replace(path=p.path.lstrip("/"))
+    except ValueError:
+        raise RdapError('Chemin RDAP invalide : fournir un chemin relatif au service, sans fragment ni segment de navigation.') from None
+
+
+def path_url(base, value):
+    query = relative_query(value)
+    p = urlsplit(http_url(base))
+    path = p.path.rstrip("/") + "/" + quote(query.path, safe="/:@!$&'()*+,;=-._~%")
+    return urlunsplit(p._replace(path=path, query=quote(query.query, safe="/?:@!$&'()*+,;=-._~%"), fragment=""))
+
+
+def search_name(entry):
+    name = entry.get("unicodeName") or entry.get("ldhName") or entry.get("handle") or entry.get("name")
+    if name:
+        return text(name)
+    if entry.get("startAddress"):
+        return text(entry["startAddress"]) + (" - " + text(entry["endAddress"]) if entry.get("endAddress") else "")
+    if "startAutnum" in entry:
+        start, end = entry["startAutnum"], entry.get("endAutnum", entry["startAutnum"])
+        return f"AS{start}" if start == end else f"AS{start} - AS{end}"
+    return ""
+
+
+def search_keys(data):
+    # Extensions can namespace result arrays, e.g. arin_originas0_networkSearchResults.
+    return [key for key in data if key in SEARCH_KEYS or key.endswith(("SearchResults", "SearchResult"))]
 
 
 def reject_json_constant(value):
@@ -438,9 +503,16 @@ class Client:
             if "-" not in value:
                 raise RdapError("Un handle d'entite doit avoir un tag (ex. ADMIN2521-ARIN), ou utiliser --server.")
             tag = value.rsplit("-", 1)[-1].lower()
-            for keys, urls in self.services("object-tags"):
+            services = self.services("object-tags")
+            for keys, urls in services:
                 if tag in [key.lower() for key in keys]:
                     return urls
+            # RIPE maintainer and organisation keys need not end in -RIPE.
+            if re.fullmatch(r"(?:MNT-.+|ORG-.+|.+-MNT)", value, re.I):
+                for keys, urls in services:
+                    if "ripe" in [key.lower() for key in keys]:
+                        self.trace(f'Convention de handle RIPE : {value} ; --server permet de choisir un autre service.')
+                        return urls
         raise RdapError(f'Aucun service RDAP IANA pour {value!r}. Utiliser --server URL si un serveur est connu.')
 
     def candidates(self, urls):
@@ -453,10 +525,38 @@ class Client:
                 self.trace(f'Echec du serveur, essai suivant : {exc}')
         raise RdapError('Aucun serveur RDAP disponible.')
 
-    def lookup(self, value, kind=None, *, server=None, reverse=False):
+    def query_path(self, value, *, server=None, params=()):
+        query = relative_query(value)
+        if server:
+            bases = [server]
+        else:
+            kind, _, key = query.path.partition("/")
+            if kind not in SEARCH_PATHS or not key:
+                raise RdapError('Ce chemin RDAP exige --server URL ; une URL complète peut aussi être utilisée.')
+            key = unquote(key)
+            if kind in ("domain", "nameserver"):
+                key = domain_name(key)
+            elif kind == "ip":
+                key = str(ip_network(key))
+            elif kind == "autnum":
+                key = str(as_number(key))
+            bases = self.bases(kind, key)
+        return self.candidates([with_parameters(path_url(base, value), params) for base in bases])
+
+    def lookup(self, value, kind=None, *, server=None, reverse=False, params=()):
         kind = kind or detect_type(value)
         if kind == "url":
-            return local_document(value) if value.lower().startswith("file://") else self.fetch(value, authenticated=True)
+            if value.lower().startswith("file://"):
+                if params:
+                    raise RdapError('--param ne peut pas être combiné avec un fichier local.')
+                return local_document(value)
+            return self.fetch(with_parameters(value, params), authenticated=True)
+        if kind == "path":
+            return self.query_path(value, server=server, params=params)
+        if kind == "help":
+            if not server or value:
+                raise RdapError('--rdap-help exige --server URL, sans objet à rechercher.')
+            return self.query_path("help", server=server, params=params)
         if kind in ("domain", "nameserver", "tld"):
             value = domain_name(value)
             if kind == "tld" and "." in value:
@@ -466,9 +566,13 @@ class Client:
             value = str(network) if "/" in value else str(network.network_address)
         elif kind == "autnum":
             value = str(as_number(value))
+        elif kind != "entity":
+            raise RdapError(f'Type de requête RDAP inconnu : {kind!r}.')
+        elif not value.strip() or any(ord(c) < 32 or ord(c) == 127 for c in value):
+            raise RdapError('Identifiant d’entité invalide.')
         endpoint_kind = "domain" if kind == "tld" else kind
         bases = [server] if server else (["https://rdap.iana.org/"] if kind == "tld" else self.bases(kind, value))
-        response = self.candidates([endpoint(base, endpoint_kind, value) for base in bases])
+        response = self.candidates([with_parameters(endpoint(base, endpoint_kind, value), params) for base in bases])
         if reverse and kind == "ip":
             zone = reverse_name(network_from_record(response.data))
             response = self.fetch(endpoint(service_base(response.url), "domain", zone), authenticated=True)
@@ -493,21 +597,38 @@ class Client:
                     return [response]
         return [response]
 
-    def search(self, pattern, *, server=None):
-        pattern = domain_name(pattern, pattern=True)
+    def search(self, pattern, *, server=None, kind="domain", field=None, params=()):
+        if kind not in SEARCH_FIELDS:
+            raise RdapError(f'Type de recherche RDAP inconnu : {kind!r}.')
+        field = field or SEARCH_FIELDS[kind][0]
+        if field not in SEARCH_FIELDS[kind]:
+            raise RdapError(f'Champ de recherche {field!r} invalide pour {kind}.')
+        if field in ("ip", "nsIp"):
+            network = ip_network(pattern)
+            if "/" in pattern:
+                raise RdapError('Cette recherche attend une adresse IP, sans préfixe CIDR.')
+            pattern = str(network.network_address)
+        elif kind in ("domain", "nameserver"):
+            pattern = domain_name(pattern, pattern=True)
+        else:
+            pattern = unicodedata.normalize("NFC", pattern)
+            if not pattern.strip() or any(ord(c) < 32 or ord(c) == 127 for c in pattern):
+                raise RdapError('Motif de recherche vide ou contenant un caractère de contrôle.')
         if server:
             bases = [server]
+        elif kind != "domain" or field != "name":
+            raise RdapError('Cette recherche exige --server URL : son service ne peut pas être déduit du motif.')
         elif "." in pattern:
             bases = self.bases("domain", pattern)
         else:
             bases = list(dict.fromkeys(urls[0] for _, urls in self.services("dns")))
         responses = []
         for base in bases:
-            url = endpoint(base, "domains") + "?" + urlencode({"name": pattern})
+            url = with_parameters(endpoint(base, SEARCH_PATHS[kind]), [(field, pattern), *params])
             try:
                 result = self.fetch(url, authenticated=True)
-                if not any(isinstance(result.data.get(key), list) for key in ("domainSearchResults", "domainSearchResult")):
-                    raise RdapError('La réponse ne contient pas domainSearchResults.')
+                if not any(isinstance(result.data.get(key), list) for key in SEARCH_RESULTS[kind]):
+                    raise RdapError(f'La réponse ne contient pas {SEARCH_RESULTS[kind][0]}.')
                 responses.append(result)
             except RdapError as exc:
                 print('Avertissement : ' + terminal_text(exc), file=sys.stderr)
@@ -921,6 +1042,7 @@ def owner_summary(responses):
 
 
 FRENCH = {
+    "RDAP Response": "Réponse RDAP",
     'Object type': "Type d'objet",
     'Domain Name': 'Nom de domaine',
     'IP Network': 'Réseau IP',
@@ -1092,9 +1214,11 @@ class Formatter:
             self.kv("Notice", 'Profondeur maximale des objets imbriqués atteinte.', indent)
             return
         kind = data.get("objectClassName")
-        classes = {"domain": "Domain Name", "ip network": "IP Network", "autnum": "Autonomous System", "entity": "Entity", "nameserver": "Nameserver", "help": "Help"}
+        classes = {"domain": "Domain Name", "ip network": "IP Network", "autnum": "Autonomous System", "entity": "Entity", "nameserver": "Nameserver", "help": "Help", "response": "RDAP Response"}
         if kind is None and urlsplit(url).path.rstrip("/").endswith("/help"):
             kind = "help"
+        if kind is None and (objects(data.get("notices")) or items(data.get("rdapConformance"))):
+            kind = "response"
         if kind is None:
             raise RdapError('La réponse ne contient pas objectClassName ; utiliser --raw pour afficher son JSON.')
         if not isinstance(kind, str):
@@ -1148,6 +1272,8 @@ class Formatter:
             for public_id in objects(data.get("publicIds")):
                 self.kv(public_id.get("type") or "ID", public_id.get("identifier"), indent)
             self.vcard(data, indent)
+        if kind in ("help", "response") and data.get("rdapConformance"):
+            self.kv("Extensions RDAP", text(data["rdapConformance"]), indent)
         for event in objects(data.get("events")) + objects(data.get("asEventActor")):
             action = text(event.get("eventAction", "Event")).capitalize()
             if action.lower() == "last update of rdap database":
@@ -1171,6 +1297,10 @@ class Formatter:
             label = "Contact" + (" " + roles if roles else "")
             self.kv(label, entity.get("handle", ""), indent)
             self.display(dict(entity, objectClassName="entity"), indent + 1, depth=depth + 1)
+        for field, object_class in (("networks", "ip network"), ("autnums", "autnum")):
+            for resource in objects(data.get(field)):
+                self.kv("IP Network" if field == "networks" else "Autonomous System", indent=indent)
+                self.display(dict(resource, objectClassName=object_class), indent + 1, depth=depth + 1)
         if not self.short:
             self.extras(data, indent)
 
@@ -1231,11 +1361,12 @@ def parser():
     p.add_argument("-h", "--help", action="help", help="afficher cette aide et quitter")
     p._positionals.title = "arguments positionnels"
     p._optionals.title = "options"
-    p.add_argument("query", nargs="?", metavar='OBJET', help='domaine, IP/CIDR, ASN, identifiant avec tag, TLD ou URL RDAP')
+    p.add_argument("query", nargs="?", metavar='OBJET', help='domaine, IP/CIDR, ASN, identifiant d’entité, TLD, chemin ou URL RDAP')
     p.add_argument("--object", dest="named_query", metavar='OBJET', help='autre syntaxe pour fournir l’objet recherché')
     p.add_argument("--type", choices=TYPES, dest="kind", help='imposer le type d’objet')
     for kind in TYPES:
-        p.add_argument("--" + kind, dest="kind", action="store_const", const=kind, help=f'alias de --type={kind}')
+        flag = "--rdap-help" if kind == "help" else "--" + kind
+        p.add_argument(flag, dest="kind", action="store_const", const=kind, help=f'alias de --type={kind}')
     mode = p.add_mutually_exclusive_group()
     mode.add_argument("--registry", dest="mode", action="store_const", const="registry", help='afficher uniquement la réponse du registre')
     mode.add_argument("--registrar", dest="mode", action="store_const", const="registrar", help='suivre le renvoi vers le registrar (par défaut)')
@@ -1244,7 +1375,9 @@ def parser():
     p.add_argument("--owner", action="store_true", help='résumer l’organisation et les contacts du titulaire (domaines : consulter les deux sources par défaut)')
     p.add_argument("--raw", "--json", action="store_true", help='afficher la réponse JSON complète')
     p.add_argument("--short", action="store_true", help='omettre liens, remarques, avis et champs masqués')
-    p.add_argument("--search", action="store_true", help='rechercher des domaines (sans suffixe : tous les services DNS IANA)')
+    p.add_argument("--search", action="store_true", help='rechercher des domaines, entités, serveurs DNS, réseaux IP ou ASN (choisir avec --type)')
+    p.add_argument("--search-field", metavar="CHAMP", help='champ recherché : name, nsLdhName, nsIp, ip, fn ou handle selon le type')
+    p.add_argument("--param", action="append", default=[], metavar="NOM=VALEUR", help='ajouter un paramètre de requête ; option répétable, notamment pour les extensions')
     p.add_argument("--reverse", action="store_true", help='pour une IP, interroger la zone inverse du bloc attribué')
     p.add_argument("--server", metavar="URL", help='URL de base du serveur RDAP à interroger')
     p.add_argument("--auth", metavar="USER:PASS", help='identifiants HTTP Basic, limités à l’origine du premier serveur interrogé')
@@ -1300,9 +1433,9 @@ def main(argv=None):
         if args.query and args.named_query:
             p.error('Fournir OBJET ou --object, un seul à la fois.')
         value = args.query or args.named_query
-        if args.file and (value or args.search or args.reverse):
+        if args.file and (value or args.search or args.reverse or args.param or args.search_field or args.kind in ("path", "help")):
             p.error('--file attend uniquement un fichier JSON local.')
-        if not value and not args.file:
+        if not value and not args.file and args.kind != "help":
             p.error('Fournir un objet RDAP, ou utiliser --help.')
         if not re.fullmatch(r"[A-Za-z]{2,8}(?:-[A-Za-z0-9]{1,8})*", args.language):
             p.error('--language attend une balise comme fr, fr-FR ou en.')
@@ -1312,23 +1445,37 @@ def main(argv=None):
             p.error('--auth exige --server URL ou une URL RDAP explicite.')
         if args.file and (args.auth or args.server):
             p.error('--file ne peut pas être combiné avec --auth ou --server.')
-        kind = args.kind or (detect_type(value) if value else None)
-        if args.search and args.kind not in (None, "domain"):
-            p.error('--search est disponible pour les domaines uniquement.')
+        kind = args.kind or ("domain" if args.search else detect_type(value) if value else None)
+        if args.search_field and not args.search:
+            p.error('--search-field exige --search.')
+        if args.search:
+            if kind not in SEARCH_FIELDS:
+                p.error('--search attend le type domain, nameserver, entity, ip ou autnum.')
+            field = args.search_field or SEARCH_FIELDS[kind][0]
+            if field not in SEARCH_FIELDS[kind]:
+                p.error(f'Champs de recherche pour {kind} : {", ".join(SEARCH_FIELDS[kind])}.')
+            if not args.server and (kind != "domain" or field != "name"):
+                p.error('Cette recherche exige --server URL ; seul domain/name dispose de la découverte DNS IANA.')
+        if kind == "help" and (value or not args.server or args.owner):
+            p.error('--rdap-help exige --server URL, sans objet ni --owner.')
         if args.owner and args.search:
             p.error('--owner ne peut pas être combiné avec --search.')
         if args.reverse and (kind != "ip" or args.search):
             p.error('--reverse attend une adresse IP ou un préfixe CIDR.')
         if args.insecure:
             print('Avertissement : vérification des certificats TLS désactivée.', file=sys.stderr)
+        try:
+            params = query_parameters(args.param)
+        except RdapError as exc:
+            p.error(str(exc))
         client = Client(timeout=args.timeout, cache_dir=args.cache_dir, bypass=args.bypass_cache, auth=args.auth, language=args.language, debug=args.debug, insecure=args.insecure)
         if args.file:
             responses = [local_document(args.file)]
         elif args.search:
-            responses = client.search(value, server=args.server)
+            responses = client.search(value, server=args.server, kind=kind, field=args.search_field, params=params)
         else:
             mode = args.mode or ("both" if args.owner else "registrar")
-            responses = client.records(client.lookup(value, kind, server=args.server, reverse=args.reverse), mode)
+            responses = client.records(client.lookup(value or "", kind, server=args.server, reverse=args.reverse, params=params), mode)
         if args.owner:
             summary = owner_summary(responses)
             if args.raw:
@@ -1339,15 +1486,16 @@ def main(argv=None):
         elif args.raw:
             payload = responses[0].data if len(responses) == 1 else [response.data for response in responses]
             print(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True, allow_nan=False))
-        elif args.search or any(any(key in response.data for key in SEARCH_KEYS) for response in responses):
+        elif args.search or any(search_keys(response.data) for response in responses):
             seen = set()
             for response in responses:
-                for key in SEARCH_KEYS:
+                for key in search_keys(response.data):
                     for entry in objects(response.data.get(key)):
-                        name = text(entry.get("unicodeName") or entry.get("ldhName") or entry.get("handle"))
-                        if name and name.lower() not in seen:
+                        name = search_name(entry)
+                        identity = (key.removesuffix("s"), name.casefold())
+                        if name and identity not in seen:
                             print(terminal_text(name))
-                            seen.add(name.lower())
+                            seen.add(identity)
                 if not args.short:
                     for notice in objects(response.data.get("notices")):
                         print('Avis : ' + terminal_text(notice.get("title")) + ' : ' + terminal_text(notice.get("description")), file=sys.stderr)
